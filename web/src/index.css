@@ -1,0 +1,165 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --background: oklch(0.985 0.003 180);
+  --foreground: oklch(0.22 0.02 200);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.22 0.02 200);
+  --muted: oklch(0.96 0.006 190);
+  --muted-foreground: oklch(0.48 0.02 200);
+  --border: oklch(0.91 0.01 190);
+  --input: oklch(0.88 0.012 190);
+  --primary: oklch(0.52 0.1 187);
+  --primary-foreground: oklch(0.99 0 0);
+  --accent: oklch(0.95 0.025 185);
+  --accent-foreground: oklch(0.3 0.06 187);
+  --destructive: oklch(0.55 0.21 27);
+  --danger-soft: oklch(0.96 0.03 25);
+  --warn-soft: oklch(0.97 0.05 90);
+  --good-soft: oklch(0.96 0.045 155);
+  --danger: oklch(0.5 0.19 27);
+  --warn: oklch(0.48 0.12 70);
+  --good: oklch(0.45 0.13 155);
+  --ring: oklch(0.52 0.1 187);
+  --radius: 0.75rem;
+}
+
+.dark {
+  --background: oklch(0.17 0.015 220);
+  --foreground: oklch(0.95 0.005 200);
+  --card: oklch(0.21 0.018 220);
+  --card-foreground: oklch(0.95 0.005 200);
+  --muted: oklch(0.25 0.018 220);
+  --muted-foreground: oklch(0.72 0.02 200);
+  --border: oklch(0.31 0.02 220);
+  --input: oklch(0.34 0.022 220);
+  --primary: oklch(0.7 0.11 183);
+  --primary-foreground: oklch(0.16 0.02 200);
+  --accent: oklch(0.29 0.04 195);
+  --accent-foreground: oklch(0.92 0.03 185);
+  --destructive: oklch(0.68 0.19 25);
+  --danger-soft: oklch(0.26 0.06 25);
+  --warn-soft: oklch(0.27 0.05 85);
+  --good-soft: oklch(0.26 0.05 155);
+  --danger: oklch(0.8 0.12 25);
+  --warn: oklch(0.85 0.12 88);
+  --good: oklch(0.82 0.13 155);
+  --ring: oklch(0.7 0.11 183);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-danger-soft: var(--danger-soft);
+  --color-warn-soft: var(--warn-soft);
+  --color-good-soft: var(--good-soft);
+  --color-danger: var(--danger);
+  --color-warn: var(--warn);
+  --color-good: var(--good);
+  --color-ring: var(--ring);
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 4px);
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+  html {
+    color-scheme: light;
+    -webkit-tap-highlight-color: transparent;
+  }
+  html.dark {
+    color-scheme: dark;
+  }
+  body {
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    font-size: 16px;
+    line-height: 1.5;
+    min-height: 100dvh;
+    -webkit-font-smoothing: antialiased;
+  }
+  /* Impede a rolagem da página por trás de um diálogo aberto */
+  body:has(dialog[open]) {
+    overflow: hidden;
+  }
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/* Diálogo nativo: folha na parte de baixo no celular, modal centralizado no desktop */
+dialog.sheet {
+  margin: auto auto 0 auto;
+  width: 100%;
+  max-width: 100%;
+  max-height: 92dvh;
+  overscroll-behavior: contain;
+  border-radius: 1.25rem 1.25rem 0 0;
+  padding: 0;
+  background: var(--card);
+  color: var(--card-foreground);
+  border: 1px solid var(--border);
+  box-shadow: 0 -10px 40px rgb(0 0 0 / 0.25);
+  opacity: 0;
+  transform: translateY(24px);
+  transition: opacity 0.18s ease, transform 0.18s ease, overlay 0.18s allow-discrete, display 0.18s allow-discrete;
+}
+dialog.sheet[open] {
+  opacity: 1;
+  transform: translateY(0);
+}
+@starting-style {
+  dialog.sheet[open] {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+}
+dialog.sheet::backdrop {
+  background: rgb(0 0 0 / 0.5);
+  transition: background 0.18s ease, overlay 0.18s allow-discrete, display 0.18s allow-discrete;
+}
+@media (min-width: 640px) {
+  dialog.sheet {
+    margin: auto;
+    max-width: var(--dialog-w, 32rem);
+    border-radius: 1.25rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  dialog.sheet,
+  dialog.sheet::backdrop {
+    transition: none;
+  }
+}
+
+/* Select nativo (mantém a seta do sistema, que funciona melhor no celular) */
+select.ui-select {
+  padding-block: 0;
+  line-height: 2.75rem;
+}
+select.ui-select.h-9 {
+  line-height: 2.25rem;
+}

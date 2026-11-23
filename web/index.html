@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="description" content="Controle financeiro da casa: rendas, gastos divididos, reservas e um consultor que explica onde o dinheiro está faltando." />
+    <meta name="theme-color" content="#0f766e" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>Contas da Casa — controle financeiro familiar</title>
+    <script>
+      (function () {
+        try {
+          var t = localStorage.getItem('tema');
+          var dark = t ? t === 'escuro' : window.matchMedia('(prefers-color-scheme: dark)').matches;
+          if (dark) document.documentElement.classList.add('dark');
+        } catch (e) {}
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
