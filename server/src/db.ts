@@ -34,6 +34,14 @@ CREATE TABLE IF NOT EXISTS pending_registrations (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS password_resets (
+  email TEXT PRIMARY KEY,
+  code_hash TEXT NOT NULL,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  expires_at TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS household_members (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -129,6 +137,14 @@ CREATE TABLE IF NOT EXISTS pending_registrations (
   email TEXT PRIMARY KEY,
   name TEXT NOT NULL,
   password_hash TEXT NOT NULL,
+  code_hash TEXT NOT NULL,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  expires_at TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS password_resets (
+  email TEXT PRIMARY KEY,
   code_hash TEXT NOT NULL,
   attempts INTEGER NOT NULL DEFAULT 0,
   expires_at TEXT NOT NULL,

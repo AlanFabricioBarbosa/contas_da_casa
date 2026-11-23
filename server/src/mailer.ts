@@ -2,6 +2,7 @@ export interface VerificationMail {
   to: string;
   name: string;
   code: string;
+  kind?: 'register' | 'reset';
 }
 
 export type MailSender = (mail: VerificationMail) => Promise<void>;
@@ -12,16 +13,22 @@ export type MailSender = (mail: VerificationMail) => Promise<void>;
  * 2) Brevo API v3 (BREVO_API_KEY + BREVO_SENDER_EMAIL)
  * 3) Em modo local sem nenhum dos dois configurados, imprime o código no terminal.
  */
-export async function sendVerificationMail({ to, name, code }: VerificationMail): Promise<void> {
-  const subject = `Seu código de verificação: ${code} — Contas da Casa`;
-  const text = `Olá, ${name}!\n\nUse o código ${code} para confirmar seu cadastro no Contas da Casa.\nEle vale por 10 minutos.\n\nSe você não pediu este cadastro, ignore este e-mail.`;
+export async function sendVerificationMail({ to, name, code, kind = 'register' }: VerificationMail): Promise<void> {
+  const isReset = kind === 'reset';
+  const subject = isReset
+    ? `Código para trocar sua senha: ${code} — Contas da Casa`
+    : `Seu código de verificação: ${code} — Contas da Casa`;
+  const actionText = isReset
+    ? 'para criar uma nova senha no Contas da Casa'
+    : 'para confirmar seu cadastro no Contas da Casa';
+  const text = `Olá, ${name}!\n\nUse o código ${code} ${actionText}.\nEle vale por 10 minutos.\n\nSe você não pediu isso, ignore este e-mail.`;
   const html = `
     <div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px;color:#1f2937">
       <h2 style="margin:0 0 12px;color:#0f766e">Contas da Casa</h2>
       <p>Olá, <strong>${escapeHtml(name)}</strong>!</p>
-      <p>Digite o código abaixo para confirmar seu e-mail e criar sua conta:</p>
+      <p>Digite o código abaixo ${actionText}:</p>
       <p style="font-size:32px;font-weight:700;letter-spacing:6px;background:#f0fdfa;border:1px solid #99f6e4;border-radius:10px;padding:16px;text-align:center;color:#0f766e;margin:20px 0">${code}</p>
-      <p style="font-size:13px;color:#6b7280">Este código vale por 10 minutos. Se você não pediu este cadastro, pode ignorar este e-mail.</p>
+      <p style="font-size:13px;color:#6b7280">Este código vale por 10 minutos. Se você não pediu isso, pode ignorar este e-mail.</p>
     </div>
   `;
 

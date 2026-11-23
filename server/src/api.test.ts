@@ -304,11 +304,46 @@ test('renda extra: soma ao total do mês e da pessoa sem alterar a renda padrão
   assert.equal((await call('GET', `/summary?month=${month}`)).body.extra_income_total, 0);
 });
 
+test('recuperação de senha: envia código, valida e troca a senha', async () => {
+  cookie = '';
+  sentCodes.clear();
+  // E-mail inexistente responde 200 sem enviar código
+  const unknown = await call('POST', '/auth/forgot-password', { email: 'naoexiste@teste.com' });
+  assert.equal(unknown.status, 200);
+  assert.equal(sentCodes.has('naoexiste@teste.com'), false);
+
+  // Para Maria (já existente) envia código
+  const reqReset = await call('POST', '/auth/forgot-password', { email: 'maria@teste.com' });
+  assert.equal(reqReset.status, 200);
+  const code = sentCodes.get('maria@teste.com')!;
+  assert.ok(code);
+
+  const wrong = await call('POST', '/auth/reset-password', {
+    email: 'maria@teste.com',
+    code: code === '000000' ? '111111' : '000000',
+    new_password: 'novasenha123',
+  });
+  assert.equal(wrong.status, 400);
+
+  const ok = await call('POST', '/auth/reset-password', {
+    email: 'maria@teste.com',
+    code,
+    new_password: 'novasenha123',
+  });
+  assert.equal(ok.status, 200);
+  assert.equal(ok.body.email, 'maria@teste.com');
+
+  // Senha antiga não entra mais; senha nova entra
+  cookie = '';
+  assert.equal((await call('POST', '/auth/login', { email: 'maria@teste.com', password: 'senha1234' })).status, 401);
+  assert.equal((await call('POST', '/auth/login', { email: 'maria@teste.com', password: 'novasenha123' })).status, 200);
+});
+
 test('login, logout e isolamento entre usuários', async () => {
   cookie = '';
   const bad = await call('POST', '/auth/login', { email: 'maria@teste.com', password: 'errada123' });
   assert.equal(bad.status, 401);
-  const ok = await call('POST', '/auth/login', { email: 'maria@teste.com', password: 'senha1234' });
+  const ok = await call('POST', '/auth/login', { email: 'maria@teste.com', password: 'novasenha123' });
   assert.equal(ok.status, 200);
 
   // Segundo usuário não enxerga dados da Maria

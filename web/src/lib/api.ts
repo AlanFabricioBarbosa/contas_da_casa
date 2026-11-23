@@ -56,6 +56,12 @@ export const api = {
     return u;
   },
   resendCode: (b: { email: string }) => post<{ ok: true }>('/auth/resend-code', b),
+  forgotPassword: (b: { email: string }) => post<{ ok: true }>('/auth/forgot-password', b),
+  resetPassword: async (b: { email: string; code: string; new_password: string }) => {
+    const u = await post<User>('/auth/reset-password', b);
+    exitDemoMode();
+    return u;
+  },
   guest: async () => enterDemoMode(),
   logout: () => (isDemoMode() ? demoStore.logout() : post<{ ok: true }>('/auth/logout')),
 

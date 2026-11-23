@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Sparkles } from 'lucide-react';
+import { KeyRound, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Field, Input } from '@/components/ui/field';
 import { ThemeToggle } from '@/lib/theme';
 import { Footer } from '@/components/Footer';
 import { VerifyCodeForm } from '@/components/VerifyCodeForm';
+import { useToast } from '@/components/ui/toast';
 import { api } from '@/lib/api';
 import { errMsg } from '@/lib/queries';
 import { cn } from '@/lib/utils';
@@ -14,9 +15,11 @@ import { resetSession } from '@/lib/session';
 
 export default function AuthPage() {
   const qc = useQueryClient();
+  const toast = useToast();
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [form, setForm] = useState({ name: '', email: '', password: '' });
   const [pendingEmail, setPendingEmail] = useState<string | null>(null);
+  const [resetting, setResetting] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -80,6 +83,18 @@ export default function AuthPage() {
                 setError('');
               }}
             />
+          ) : resetting ? (
+            <ResetPasswordForm
+              initialEmail={form.email}
+              onDone={(user) => {
+                resetSession(qc, user);
+                toast('Senha alterada! Você já está conectado.');
+              }}
+              onBack={() => {
+                setResetting(false);
+                setError('');
+              }}
+            />
           ) : (
             <>
               <div role="tablist" className="mb-5 grid grid-cols-2 rounded-lg bg-muted p-1">
@@ -126,7 +141,18 @@ export default function AuthPage() {
                 <Button type="submit" disabled={busy}>
                   {busy ? 'Aguarde…' : mode === 'login' ? 'Entrar' : 'Enviar código e criar conta'}
                 </Button>
-                {mode === 'register' && (
+                {mode === 'login' ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setResetting(true);
+                      setError('');
+                    }}
+                    className="mx-auto cursor-pointer text-xs font-medium text-primary hover:underline"
+                  >
+                    Esqueci minha senha
+                  </button>
+                ) : (
                   <p className="text-center text-xs text-muted-foreground">
                     Enviamos um código de verificação para confirmar seu e-mail. Sua conta começa zerada e salva no banco.
                   </p>
@@ -137,6 +163,142 @@ export default function AuthPage() {
         </Card>
         <Footer className="mt-6 border-t-0 pt-0" />
       </div>
+    </div>
+  );
+}
+
+function ResetPasswordForm({
+  initialEmail,
+  onDone,
+  onBack,
+}: {
+  initialEmail: string;
+  onDone: (user: Awaited<ReturnType<typeof api.resetPassword>>) => void;
+  onBack: () => void;
+}) {
+  const [email, setEmail] = useState(initialEmail);
+  const [sent, setSent] = useState(false);
+  const [code, setCode] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [info, setInfo] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const sendCode = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    setBusy(true);
+    setError('');
+    setInfo('');
+    try {
+      await api.forgotPassword({ email });
+      setSent(true);
+      setInfo('Se este e-mail estiver cadastrado, enviamos um código de 6 dígitos para ele (confira também o Spam).');
+    } catch (err) {
+      setError(errMsg(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const confirmReset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const digits = code.replace(/\D/g, '');
+    if (digits.length !== 6) return setError('Digite os 6 números do código enviado para o seu e-mail.');
+    setBusy(true);
+    setError('');
+    setInfo('');
+    try {
+      const user = await api.resetPassword({ email, code: digits, new_password: newPassword });
+      onDone(user);
+    } catch (err) {
+      setError(errMsg(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-start gap-3 rounded-lg bg-accent p-3 text-sm text-accent-foreground">
+        <KeyRound className="mt-0.5 size-5 shrink-0" aria-hidden />
+        <div>
+          <p className="font-semibold">Recuperar senha</p>
+          <p className="opacity-90">
+            {sent ? `Digite o código enviado para ${email} e escolha uma senha nova.` : 'Informe seu e-mail para receber o código de 6 dígitos.'}
+          </p>
+        </div>
+      </div>
+
+      {!sent ? (
+        <form className="flex flex-col gap-4" onSubmit={sendCode}>
+          <Field label="Seu e-mail">
+            {(p) => <Input {...p} type="email" required autoComplete="email" inputMode="email" value={email} onChange={(e) => setEmail(e.target.value)} autoFocus />}
+          </Field>
+          {error && (
+            <p role="alert" className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">
+              {error}
+            </p>
+          )}
+          <Button type="submit" disabled={busy}>
+            {busy ? 'Enviando…' : 'Enviar código'}
+          </Button>
+          <button type="button" onClick={onBack} disabled={busy} className="mx-auto cursor-pointer text-xs text-muted-foreground hover:underline">
+            Voltar para o login
+          </button>
+        </form>
+      ) : (
+        <form className="flex flex-col gap-4" onSubmit={confirmReset}>
+          <Field label="Código de 6 dígitos">
+            {(p) => (
+              <Input
+                {...p}
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                placeholder="000000"
+                maxLength={6}
+                className="tabular text-center text-xl font-bold tracking-[0.35em]"
+                value={code}
+                onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                autoFocus
+              />
+            )}
+          </Field>
+          <Field label="Nova senha" hint="Mínimo de 8 caracteres.">
+            {(p) => (
+              <Input
+                {...p}
+                type="password"
+                required
+                minLength={8}
+                autoComplete="new-password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+              />
+            )}
+          </Field>
+          {error && (
+            <p role="alert" className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">
+              {error}
+            </p>
+          )}
+          {info && (
+            <p role="status" className="rounded-lg bg-good-soft px-3 py-2 text-sm text-good">
+              {info}
+            </p>
+          )}
+          <Button type="submit" disabled={busy}>
+            {busy ? 'Salvando…' : 'Salvar nova senha e entrar'}
+          </Button>
+          <div className="flex items-center justify-between gap-2 text-xs">
+            <button type="button" onClick={() => sendCode()} disabled={busy} className="cursor-pointer font-medium text-primary hover:underline disabled:opacity-50">
+              Reenviar código
+            </button>
+            <button type="button" onClick={onBack} disabled={busy} className="cursor-pointer text-muted-foreground hover:underline">
+              Voltar para o login
+            </button>
+          </div>
+        </form>
+      )}
     </div>
   );
 }

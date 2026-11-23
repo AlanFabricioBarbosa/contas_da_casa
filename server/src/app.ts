@@ -115,6 +115,11 @@ const verifyEmailBody = z.object({
   code: z.string({ error: 'Informe o código.' }).trim().regex(/^\d{6}$/, 'Digite os 6 dígitos do código.'),
 });
 const resendBody = z.object({ email: credentials.email });
+const resetPasswordBody = z.object({
+  email: credentials.email,
+  code: verifyEmailBody.shape.code,
+  new_password: credentials.password,
+});
 
 const CODE_TTL_MS = 10 * 60 * 1000;
 const genCode = () => String(crypto.randomInt(0, 1_000_000)).padStart(6, '0');
@@ -269,6 +274,63 @@ export function createApp(db: Db, opts?: { sendMail?: MailSender }) {
     if (!u || !verifyPassword(body.password, u.password_hash)) {
       throw new HttpError(401, 'E-mail ou senha incorretos.');
     }
+    startSession(res, u.id);
+    res.json(publicUser(u));
+  });
+
+  api.post('/auth/forgot-password', authLimiter, async (req, res) => {
+    const { email } = resendBody.parse(req.body);
+    const u = await get<UserRow>(db, 'SELECT * FROM users WHERE email = ? AND is_guest = 0', email);
+    if (u) {
+      const code = genCode();
+      try {
+        await sendMail({ to: u.email, name: u.name, code, kind: 'reset' });
+      } catch (e) {
+        throw new HttpError(502, e instanceof Error ? e.message : 'Falha ao enviar o e-mail de recuperação.');
+      }
+      const expiresAt = new Date(Date.now() + CODE_TTL_MS).toISOString();
+      const cHash = hashCode(u.email, code);
+      await tx(db, async (tdb) => {
+        await run(tdb, 'DELETE FROM password_resets WHERE email = ?', u.email);
+        await run(
+          tdb,
+          'INSERT INTO password_resets (email, code_hash, attempts, expires_at) VALUES (?,?,0,?)',
+          u.email,
+          cHash,
+          expiresAt,
+        );
+      });
+    }
+    res.json({ ok: true });
+  });
+
+  api.post('/auth/reset-password', authLimiter, async (req, res) => {
+    const body = resetPasswordBody.parse(req.body);
+    const reset = await get<{ email: string; code_hash: string; attempts: number; expires_at: string }>(
+      db,
+      'SELECT * FROM password_resets WHERE email = ?',
+      body.email,
+    );
+    if (!reset) {
+      throw new HttpError(400, 'Código inválido ou expirado. Peça um novo código.');
+    }
+    if (reset.expires_at < new Date().toISOString()) {
+      throw new HttpError(400, 'Este código venceu. Peça um novo código.');
+    }
+    if (reset.attempts >= 5) {
+      throw new HttpError(429, 'Muitas tentativas erradas. Peça um novo código.');
+    }
+    if (!codeMatches(body.email, body.code, reset.code_hash)) {
+      await run(db, 'UPDATE password_resets SET attempts = attempts + 1 WHERE email = ?', body.email);
+      throw new HttpError(400, 'Código incorreto. Confira o número de 6 dígitos enviado para o seu e-mail.');
+    }
+    const u = await get<UserRow>(db, 'SELECT * FROM users WHERE email = ? AND is_guest = 0', body.email);
+    if (!u) throw new HttpError(400, 'Conta não encontrada.');
+
+    await tx(db, async (tdb) => {
+      await run(tdb, 'UPDATE users SET password_hash = ? WHERE id = ?', hashPassword(body.new_password), u.id);
+      await run(tdb, 'DELETE FROM password_resets WHERE email = ?', body.email);
+    });
     startSession(res, u.id);
     res.json(publicUser(u));
   });
