@@ -4,10 +4,11 @@ import { createApp } from './app.js';
 const db = await openDb();
 const app = createApp(db);
 
-// Remove contas de visitante com mais de 30 dias
-const cleanup = () => {
+// Remove cadastros pendentes vencidos e visitantes antigos
+const cleanup = async () => {
   const cutoff = new Date(Date.now() - 30 * 86_400_000).toISOString().slice(0, 19).replace('T', ' ');
-  return run(db, 'DELETE FROM users WHERE is_guest = 1 AND created_at < ?', cutoff).catch(console.error);
+  await run(db, 'DELETE FROM users WHERE is_guest = 1 AND created_at < ?', cutoff).catch(console.error);
+  await run(db, 'DELETE FROM pending_registrations WHERE expires_at < ?', new Date().toISOString()).catch(console.error);
 };
 await cleanup();
 setInterval(cleanup, 6 * 60 * 60 * 1000).unref();

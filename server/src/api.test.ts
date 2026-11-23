@@ -43,11 +43,26 @@ async function seedHousehold(month: string, prev: string) {
   return [m1, m2];
 }
 
+const sentCodes = new Map<string, string>();
+
+async function registerAndVerify(name: string, email: string, password: string) {
+  const r = await call('POST', '/auth/register', { name, email, password });
+  assert.equal(r.status, 202);
+  assert.equal(r.body.pending, true);
+  const code = sentCodes.get(email.toLowerCase());
+  assert.ok(code);
+  return call('POST', '/auth/verify-email', { email, code });
+}
+
 before(async () => {
   const { openDb } = await import('./db.js');
   const { createApp } = await import('./app.js');
   const db = await openDb(':memory:');
-  const server = createApp(db).listen(0);
+  const server = createApp(db, {
+    sendMail: async ({ to, code }) => {
+      sentCodes.set(to.toLowerCase(), code);
+    },
+  }).listen(0);
   base = `http://127.0.0.1:${(server.address() as AddressInfo).port}/api`;
   after_close = () => server.close();
 });
@@ -58,8 +73,32 @@ test('exige login', async () => {
   assert.equal(r.status, 401);
 });
 
+test('verificação por e-mail: código errado, bloqueio, reenvio e e-mail não confirmado', async () => {
+  const r = await call('POST', '/auth/register', { name: 'Ana', email: 'ana@teste.com', password: 'senha1234' });
+  assert.equal(r.status, 202);
+  // Sem confirmar o código ainda não faz login
+  const preLogin = await call('POST', '/auth/login', { email: 'ana@teste.com', password: 'senha1234' });
+  assert.equal(preLogin.status, 401);
+
+  const firstCode = sentCodes.get('ana@teste.com')!;
+  const wrongCode = firstCode === '000000' ? '111111' : '000000';
+  for (let i = 0; i < 5; i++) {
+    const fail = await call('POST', '/auth/verify-email', { email: 'ana@teste.com', code: wrongCode });
+    assert.equal(fail.status, 400);
+  }
+  const blocked = await call('POST', '/auth/verify-email', { email: 'ana@teste.com', code: firstCode });
+  assert.equal(blocked.status, 429);
+
+  const resend = await call('POST', '/auth/resend-code', { email: 'ana@teste.com' });
+  assert.equal(resend.status, 200);
+  const newCode = sentCodes.get('ana@teste.com')!;
+  const ok = await call('POST', '/auth/verify-email', { email: 'ana@teste.com', code: newCode });
+  assert.equal(ok.status, 201);
+  cookie = '';
+});
+
 test('cadastro começa limpo (sem dados de exemplo no banco) e fluxo completo de gastos e reservas', async () => {
-  const reg = await call('POST', '/auth/register', { name: 'Maria', email: 'maria@teste.com', password: 'senha1234' });
+  const reg = await registerAndVerify('Maria', 'maria@teste.com', 'senha1234');
   assert.equal(reg.status, 201);
   assert.equal(reg.body.has_demo_data, false);
   assert.equal((await call('GET', '/members')).body.length, 0);
@@ -274,7 +313,7 @@ test('login, logout e isolamento entre usuários', async () => {
 
   // Segundo usuário não enxerga dados da Maria
   cookie = '';
-  const reg2 = await call('POST', '/auth/register', { name: 'Zé', email: 'ze@teste.com', password: 'outrasenha1' });
+  const reg2 = await registerAndVerify('Zé', 'ze@teste.com', 'outrasenha1');
   assert.equal(reg2.status, 201);
   assert.equal((await call('GET', '/members')).body.length, 0);
   after_close();

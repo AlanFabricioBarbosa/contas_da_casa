@@ -19,6 +19,7 @@ import {
 } from './expenses.js';
 import { buildSummary } from './summary.js';
 import { allocate, fromCents, toCents } from './money.js';
+import { sendVerificationMail, type MailSender } from './mailer.js';
 
 class HttpError extends Error {
   constructor(
@@ -109,6 +110,21 @@ const credentials = {
 };
 const registerBody = z.object({ name: name('seu nome', 60), ...credentials });
 const loginBody = z.object({ email: credentials.email, password: z.string().min(1, 'Informe a senha.') });
+const verifyEmailBody = z.object({
+  email: credentials.email,
+  code: z.string({ error: 'Informe o código.' }).trim().regex(/^\d{6}$/, 'Digite os 6 dígitos do código.'),
+});
+const resendBody = z.object({ email: credentials.email });
+
+const CODE_TTL_MS = 10 * 60 * 1000;
+const genCode = () => String(crypto.randomInt(0, 1_000_000)).padStart(6, '0');
+const hashCode = (email: string, code: string) =>
+  crypto.createHash('sha256').update(`${email}:${code}`).digest('hex');
+const codeMatches = (email: string, code: string, storedHex: string) => {
+  const actual = Buffer.from(hashCode(email, code), 'hex');
+  const expected = Buffer.from(storedHex, 'hex');
+  return actual.length === expected.length && crypto.timingSafeEqual(actual, expected);
+};
 
 interface UserRow {
   id: number;
@@ -127,7 +143,17 @@ const publicUser = (u: UserRow) => ({
   has_demo_data: !!u.has_demo_data,
 });
 
-export function createApp(db: Db) {
+interface PendingRow {
+  email: string;
+  name: string;
+  password_hash: string;
+  code_hash: string;
+  attempts: number;
+  expires_at: string;
+}
+
+export function createApp(db: Db, opts?: { sendMail?: MailSender }) {
+  const sendMail = opts?.sendMail ?? sendVerificationMail;
   const app = express();
   app.disable('x-powered-by');
   app.set('trust proxy', 1);
@@ -151,9 +177,90 @@ export function createApp(db: Db) {
     if (await get(db, 'SELECT 1 AS x FROM users WHERE email = ?', body.email)) {
       throw new HttpError(409, 'Já existe uma conta com este e-mail.');
     }
-    const id = await insert(db, 'INSERT INTO users (email, name, password_hash) VALUES (?,?,?)', body.email, body.name, hashPassword(body.password));
+    const code = genCode();
+    try {
+      await sendMail({ to: body.email, name: body.name, code });
+    } catch (e) {
+      throw new HttpError(502, e instanceof Error ? e.message : 'Falha ao enviar o e-mail de verificação.');
+    }
+    const expiresAt = new Date(Date.now() + CODE_TTL_MS).toISOString();
+    const passHash = hashPassword(body.password);
+    const cHash = hashCode(body.email, code);
+    await tx(db, async (tdb) => {
+      await run(tdb, 'DELETE FROM pending_registrations WHERE email = ?', body.email);
+      await run(
+        tdb,
+        'INSERT INTO pending_registrations (email, name, password_hash, code_hash, attempts, expires_at) VALUES (?,?,?,?,0,?)',
+        body.email,
+        body.name,
+        passHash,
+        cHash,
+        expiresAt,
+      );
+    });
+    res.status(202).json({ pending: true, email: body.email });
+  });
+
+  api.post('/auth/verify-email', authLimiter, async (req, res) => {
+    const body = verifyEmailBody.parse(req.body);
+    if (await get(db, 'SELECT 1 AS x FROM users WHERE email = ?', body.email)) {
+      throw new HttpError(409, 'Este e-mail já está confirmado. Faça login.');
+    }
+    const pending = await get<PendingRow>(db, 'SELECT * FROM pending_registrations WHERE email = ?', body.email);
+    if (!pending) {
+      throw new HttpError(400, 'Nenhum cadastro pendente para este e-mail. Comece novamente.');
+    }
+    if (pending.expires_at < new Date().toISOString()) {
+      throw new HttpError(400, 'Este código venceu. Clique em "Reenviar código".');
+    }
+    if (pending.attempts >= 5) {
+      throw new HttpError(429, 'Muitas tentativas erradas. Clique em "Reenviar código" para gerar um novo.');
+    }
+    if (!codeMatches(body.email, body.code, pending.code_hash)) {
+      await run(db, 'UPDATE pending_registrations SET attempts = attempts + 1 WHERE email = ?', body.email);
+      throw new HttpError(400, 'Código incorreto. Confira o número de 6 dígitos enviado para o seu e-mail.');
+    }
+    const id = await tx(db, async (tdb) => {
+      if (await get(tdb, 'SELECT 1 AS x FROM users WHERE email = ?', body.email)) {
+        throw new HttpError(409, 'Já existe uma conta com este e-mail.');
+      }
+      const createdId = await insert(
+        tdb,
+        'INSERT INTO users (email, name, password_hash) VALUES (?,?,?)',
+        pending.email,
+        pending.name,
+        pending.password_hash,
+      );
+      await run(tdb, 'DELETE FROM pending_registrations WHERE email = ?', body.email);
+      return createdId;
+    });
     startSession(res, id);
     res.status(201).json(publicUser((await userById(id))!));
+  });
+
+  api.post('/auth/resend-code', authLimiter, async (req, res) => {
+    const body = resendBody.parse(req.body);
+    if (await get(db, 'SELECT 1 AS x FROM users WHERE email = ?', body.email)) {
+      throw new HttpError(409, 'Este e-mail já está cadastrado. Faça login.');
+    }
+    const pending = await get<PendingRow>(db, 'SELECT * FROM pending_registrations WHERE email = ?', body.email);
+    if (!pending) {
+      throw new HttpError(400, 'Nenhum cadastro pendente para este e-mail.');
+    }
+    const code = genCode();
+    try {
+      await sendMail({ to: pending.email, name: pending.name, code });
+    } catch (e) {
+      throw new HttpError(502, e instanceof Error ? e.message : 'Falha ao reenviar o e-mail.');
+    }
+    await run(
+      db,
+      'UPDATE pending_registrations SET code_hash = ?, attempts = 0, expires_at = ? WHERE email = ?',
+      hashCode(pending.email, code),
+      new Date(Date.now() + CODE_TTL_MS).toISOString(),
+      pending.email,
+    );
+    res.json({ ok: true });
   });
 
   api.post('/auth/login', authLimiter, async (req, res) => {

@@ -48,11 +48,14 @@ export const api = {
     exitDemoMode();
     return u;
   },
-  register: async (b: { name: string; email: string; password: string }) => {
-    const u = await post<User>('/auth/register', b);
+  register: (b: { name: string; email: string; password: string }) =>
+    post<{ pending: true; email: string }>('/auth/register', b),
+  verifyEmail: async (b: { email: string; code: string }) => {
+    const u = await post<User>('/auth/verify-email', b);
     exitDemoMode();
     return u;
   },
+  resendCode: (b: { email: string }) => post<{ ok: true }>('/auth/resend-code', b),
   guest: async () => enterDemoMode(),
   logout: () => (isDemoMode() ? demoStore.logout() : post<{ ok: true }>('/auth/logout')),
 
