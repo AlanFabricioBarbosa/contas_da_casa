@@ -47,7 +47,7 @@ function Shell() {
   const qc = useQueryClient();
   const { pathname } = useLocation();
   const [claim, setClaim] = useState(false);
-  const showMonth = pathname === '/' || pathname.startsWith('/gastos');
+  const showMonth = pathname === '/' || pathname.startsWith('/gastos') || pathname.startsWith('/pessoas');
 
   const logout = async () => {
     await api.logout();

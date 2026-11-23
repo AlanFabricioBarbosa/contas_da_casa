@@ -11,6 +11,8 @@ const zeroByCat = (): Record<Category, number> =>
 export interface Summary {
   month: string;
   today: string;
+  base_income_total: number;
+  extra_income_total: number;
   income_total: number;
   expenses_total: number;
   paid_total: number;
@@ -25,6 +27,8 @@ export interface Summary {
     id: number;
     name: string;
     monthly_income: number;
+    extra_income: number;
+    total_income: number;
     income_share: number;
     owes: number;
     owes_paid: number;
@@ -39,7 +43,21 @@ export interface Summary {
 
 export async function buildSummary(db: Db, userId: number, month: string, today: string): Promise<Summary> {
   const members = await listMembers(db, userId);
-  const incomeCents = members.reduce((a, m) => a + toCents(m.monthly_income), 0);
+  const baseIncomeCents = members.reduce((a, m) => a + toCents(m.monthly_income), 0);
+  const extraRows = await all<{ member_id: number; amount: number }>(
+    db,
+    'SELECT member_id, amount FROM extra_incomes WHERE user_id = ? AND month_year = ?',
+    userId,
+    month,
+  );
+  const extraByMember = new Map<number, number>();
+  let extraIncomeCents = 0;
+  for (const x of extraRows) {
+    const c = toCents(x.amount);
+    extraIncomeCents += c;
+    extraByMember.set(x.member_id, (extraByMember.get(x.member_id) ?? 0) + c);
+  }
+  const incomeCents = baseIncomeCents + extraIncomeCents;
 
   const expenses = await all<{
     id: number;
@@ -110,15 +128,18 @@ export async function buildSummary(db: Db, userId: number, month: string, today:
   const memberSummaries = members.map((m) => {
     const o = owes.get(m.id) ?? { total: 0, paid: 0 };
     const inc = toCents(m.monthly_income);
+    const ext = extraByMember.get(m.id) ?? 0;
     return {
       id: m.id,
       name: m.name,
       monthly_income: m.monthly_income,
-      income_share: incomeCents > 0 ? inc / incomeCents : members.length ? 1 / members.length : 0,
+      extra_income: fromCents(ext),
+      total_income: fromCents(inc + ext),
+      income_share: baseIncomeCents > 0 ? inc / baseIncomeCents : members.length ? 1 / members.length : 0,
       owes: fromCents(o.total),
       owes_paid: fromCents(o.paid),
       owes_pending: fromCents(o.total - o.paid),
-      free: fromCents(inc - o.total),
+      free: fromCents(inc + ext - o.total),
     };
   });
 
@@ -173,6 +194,7 @@ export async function buildSummary(db: Db, userId: number, month: string, today:
     today,
     month,
     incomeTotal: fromCents(incomeCents),
+    extraIncomeTotal: fromCents(extraIncomeCents),
     hasMembers: members.length > 0,
     expensesTotal: fromCents(totalC),
     expenseCount: expenses.length,
@@ -184,7 +206,7 @@ export async function buildSummary(db: Db, userId: number, month: string, today:
       number
     >,
     prevDebt: fromCents(prevDebtC),
-    members: memberSummaries.map((m) => ({ name: m.name, income: m.monthly_income, owes: m.owes, free: m.free })),
+    members: memberSummaries.map((m) => ({ name: m.name, income: m.total_income, owes: m.owes, free: m.free })),
     overdue: {
       count: overdueItems.length,
       amount: fromCents(overdueItems.reduce((a, e) => a + toCents(e.amount), 0)),
@@ -205,6 +227,8 @@ export async function buildSummary(db: Db, userId: number, month: string, today:
   return {
     month,
     today,
+    base_income_total: fromCents(baseIncomeCents),
+    extra_income_total: fromCents(extraIncomeCents),
     income_total: fromCents(incomeCents),
     expenses_total: fromCents(totalC),
     paid_total: fromCents(paidC),

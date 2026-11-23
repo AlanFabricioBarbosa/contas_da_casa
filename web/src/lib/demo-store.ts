@@ -8,6 +8,8 @@ import type {
   ExpenseFrequency,
   ExpenseInput,
   ExpenseStatus,
+  ExtraIncome,
+  ExtraIncomeInput,
   Insight,
   Member,
   Reserve,
@@ -73,6 +75,7 @@ interface DemoState {
   nextId: number;
   user: User;
   members: Member[];
+  extraIncomes: ExtraIncome[];
   expenses: Expense[];
   tags: Tag[];
   reserves: StoredReserve[];
@@ -202,6 +205,7 @@ function createInitialState(): DemoState {
     nextId: seq,
     user: { id: 0, name: 'Visitante', email: null, is_guest: true, has_demo_data: true },
     members: people,
+    extraIncomes: [],
     expenses,
     tags,
     reserves,
@@ -251,7 +255,16 @@ function zeroByCat(): Record<Category, number> {
 function buildSummary(month: string): Summary {
   const today = todayBR();
   const prev = shiftMonth(month, -1);
-  const incomeC = state.members.reduce((a, m) => a + toCents(m.monthly_income), 0);
+  const baseIncomeC = state.members.reduce((a, m) => a + toCents(m.monthly_income), 0);
+  const extraByMember = new Map<number, number>();
+  let extraIncomeC = 0;
+  for (const x of state.extraIncomes) {
+    if (x.month_year !== month) continue;
+    const c = toCents(x.amount);
+    extraIncomeC += c;
+    extraByMember.set(x.member_id, (extraByMember.get(x.member_id) ?? 0) + c);
+  }
+  const incomeC = baseIncomeC + extraIncomeC;
   const monthExps = state.expenses.filter((e) => e.month_year === month);
   const prevExps = state.expenses.filter((e) => e.month_year === prev);
 
@@ -290,15 +303,18 @@ function buildSummary(month: string): Summary {
   const memberSummaries = state.members.map((m) => {
     const o = owes.get(m.id) ?? { total: 0, paid: 0 };
     const inc = toCents(m.monthly_income);
+    const ext = extraByMember.get(m.id) ?? 0;
     return {
       id: m.id,
       name: m.name,
       monthly_income: m.monthly_income,
-      income_share: incomeC > 0 ? inc / incomeC : state.members.length ? 1 / state.members.length : 0,
+      extra_income: fromCents(ext),
+      total_income: fromCents(inc + ext),
+      income_share: baseIncomeC > 0 ? inc / baseIncomeC : state.members.length ? 1 / state.members.length : 0,
       owes: fromCents(o.total),
       owes_paid: fromCents(o.paid),
       owes_pending: fromCents(o.total - o.paid),
-      free: fromCents(inc - o.total),
+      free: fromCents(inc + ext - o.total),
     };
   });
 
@@ -497,10 +513,20 @@ function buildSummary(month: string): Summary {
   if (monthExps.length > 0 && monthExps.every((e) => e.status === 'paid')) {
     good.push({ id: 'tudo-pago', severity: 'good', title: 'Todas as contas do mês estão pagas', message: 'Nada pendente!' });
   }
+  if (extraIncomeC > 0) {
+    good.push({
+      id: 'renda-extra',
+      severity: 'good',
+      title: `Você ganhou ${brlFmt(fromCents(extraIncomeC))} de renda extra no mês`,
+      message: 'Esse dinheiro a mais ajuda a aliviar as contas ou reforçar a reserva sem depender só da renda padrão.',
+    });
+  }
 
   return {
     month,
     today,
+    base_income_total: fromCents(baseIncomeC),
+    extra_income_total: fromCents(extraIncomeC),
     income_total: income,
     expenses_total: expensesTotal,
     paid_total: fromCents(paidC),
@@ -536,6 +562,7 @@ export const demoStore = {
   },
   clearDemo: async () => {
     state.members = [];
+    state.extraIncomes = [];
     state.expenses = [];
     state.reserves = [];
     state.tags = [];
@@ -562,7 +589,48 @@ export const demoStore = {
   },
   deleteMember: async (id: number) => {
     state.members = state.members.filter((x) => x.id !== id);
+    state.extraIncomes = state.extraIncomes.filter((x) => x.member_id !== id);
     rebuildSplits();
+    return { ok: true };
+  },
+
+  extraIncomes: async (month: string) =>
+    state.extraIncomes
+      .filter((x) => x.month_year === month)
+      .sort((a, b) => b.date.localeCompare(a.date) || b.id - a.id),
+
+  addExtraIncome: async (b: ExtraIncomeInput) => {
+    const m = state.members.find((x) => x.id === b.member_id);
+    if (!m) throw new Error('Pessoa não encontrada.');
+    const item: ExtraIncome = {
+      id: state.nextId++,
+      member_id: m.id,
+      member_name: m.name,
+      month_year: b.date.slice(0, 7),
+      title: b.title,
+      amount: b.amount,
+      date: b.date,
+      created_at: new Date().toISOString(),
+    };
+    state.extraIncomes.push(item);
+    return item;
+  },
+
+  updateExtraIncome: async (id: number, b: ExtraIncomeInput) => {
+    const item = state.extraIncomes.find((x) => x.id === id);
+    const m = state.members.find((x) => x.id === b.member_id);
+    if (!item || !m) throw new Error('Renda extra não encontrada.');
+    item.member_id = m.id;
+    item.member_name = m.name;
+    item.month_year = b.date.slice(0, 7);
+    item.title = b.title;
+    item.amount = b.amount;
+    item.date = b.date;
+    return { ...item };
+  },
+
+  deleteExtraIncome: async (id: number) => {
+    state.extraIncomes = state.extraIncomes.filter((x) => x.id !== id);
     return { ok: true };
   },
 

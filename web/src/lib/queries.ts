@@ -3,6 +3,7 @@ import { api, ApiError } from './api';
 import { useToast } from '@/components/ui/toast';
 
 export const useMembers = () => useQuery({ queryKey: ['members'], queryFn: api.members });
+export const useExtraIncomes = (month: string) => useQuery({ queryKey: ['extra-incomes', month], queryFn: () => api.extraIncomes(month) });
 export const useSummary = (month: string) => useQuery({ queryKey: ['summary', month], queryFn: () => api.summary(month) });
 export const useExpenses = (month: string) => useQuery({ queryKey: ['expenses', month], queryFn: () => api.expenses(month) });
 export const useTags = () => useQuery({ queryKey: ['tags'], queryFn: api.tags });

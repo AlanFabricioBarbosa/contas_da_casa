@@ -74,6 +74,13 @@ const memberBody = z.object({
   monthly_income: money(10_000_000).refine((v) => v >= 0, 'A renda não pode ser negativa.'),
 });
 
+const extraIncomeBody = z.object({
+  member_id: z.number().int({ error: 'Escolha a pessoa.' }),
+  title: name('a descrição da renda extra', 80),
+  amount: money(10_000_000).refine((v) => v > 0, 'O valor deve ser maior que zero.'),
+  date: z.string({ error: 'Informe a data.' }).refine(isValidDate, 'Data inválida.'),
+});
+
 const reserveBody = z.object({
   name: name('o nome da reserva', 60),
   kind: z.enum(RESERVE_KINDS).default('other'),
@@ -219,6 +226,79 @@ export function createApp(db: Db) {
       if (!r.changes) throw new HttpError(404, 'Pessoa não encontrada.');
       await rebuildSplits(tdb, req.userId!);
     });
+    res.json({ ok: true });
+  });
+
+  /* ---------------- Rendas Extras ---------------- */
+  const loadExtraIncome = (userId: number, id: number) =>
+    get(
+      db,
+      `SELECT e.id, e.member_id, m.name AS member_name, e.month_year, e.title, e.amount, e.date, e.created_at
+         FROM extra_incomes e JOIN household_members m ON m.id = e.member_id
+        WHERE e.id = ? AND e.user_id = ?`,
+      id,
+      userId,
+    );
+
+  api.get('/extra-incomes', async (req, res) => {
+    const month = monthParam.parse(req.query.month ?? currentMonth());
+    res.json(
+      await all(
+        db,
+        `SELECT e.id, e.member_id, m.name AS member_name, e.month_year, e.title, e.amount, e.date, e.created_at
+           FROM extra_incomes e JOIN household_members m ON m.id = e.member_id
+          WHERE e.user_id = ? AND e.month_year = ?
+          ORDER BY e.date DESC, e.id DESC`,
+        req.userId!,
+        month,
+      ),
+    );
+  });
+
+  api.post('/extra-incomes', async (req, res) => {
+    const b = extraIncomeBody.parse(req.body);
+    if (!(await listMembers(db, req.userId!)).some((m) => m.id === b.member_id)) {
+      throw new HttpError(400, 'Pessoa inválida.');
+    }
+    const id = await insert(
+      db,
+      `INSERT INTO extra_incomes (user_id, member_id, month_year, title, amount, date)
+       VALUES (?,?,?,?,?,?)`,
+      req.userId!,
+      b.member_id,
+      b.date.slice(0, 7),
+      b.title,
+      b.amount,
+      b.date,
+    );
+    res.status(201).json(await loadExtraIncome(req.userId!, id));
+  });
+
+  api.put('/extra-incomes/:id', async (req, res) => {
+    const b = extraIncomeBody.parse(req.body);
+    const id = Number(req.params.id);
+    if (!(await listMembers(db, req.userId!)).some((m) => m.id === b.member_id)) {
+      throw new HttpError(400, 'Pessoa inválida.');
+    }
+    const r = await run(
+      db,
+      `UPDATE extra_incomes SET member_id = ?, month_year = ?, title = ?, amount = ?, date = ?
+        WHERE id = ? AND user_id = ?`,
+      b.member_id,
+      b.date.slice(0, 7),
+      b.title,
+      b.amount,
+      b.date,
+      id,
+      req.userId!,
+    );
+    if (!r.changes) throw new HttpError(404, 'Renda extra não encontrada.');
+    res.json(await loadExtraIncome(req.userId!, id));
+  });
+
+  api.delete('/extra-incomes/:id', async (req, res) => {
+    const r = await run(db, 'DELETE FROM extra_incomes WHERE id = ? AND user_id = ?', Number(req.params.id), req.userId!);
+    if (!r.changes) throw new HttpError(404, 'Renda extra não encontrada.');
     res.json({ ok: true });
   });
 

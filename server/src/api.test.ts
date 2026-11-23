@@ -218,6 +218,53 @@ test('compras parceladas: divide sem perder centavos, gera meses futuros e exclu
   assert.equal((await call('GET', `/expenses?month=${m3}`)).body.some((e: { title: string }) => e.title === 'Ventilador'), false);
 });
 
+test('renda extra: soma ao total do mês e da pessoa sem alterar a renda padrão', async () => {
+  const { todayBR } = await import('./dates.js');
+  const today = todayBR();
+  const month = today.slice(0, 7);
+  const members = (await call('GET', '/members')).body;
+  const eu = members[0];
+
+  const before = (await call('GET', `/summary?month=${month}`)).body;
+  const beforeEu = before.members.find((m: { id: number }) => m.id === eu.id);
+
+  const ex = await call('POST', '/extra-incomes', {
+    member_id: eu.id,
+    title: 'Bico fim de semana',
+    amount: 250,
+    date: today,
+  });
+  assert.equal(ex.status, 201);
+  assert.equal(ex.body.member_name, eu.name);
+  assert.ok(ex.body.created_at);
+
+  const after = (await call('GET', `/summary?month=${month}`)).body;
+  assert.equal(after.base_income_total, before.base_income_total);
+  assert.equal(after.extra_income_total, 250);
+  assert.equal(after.income_total, before.base_income_total + 250);
+
+  const afterEu = after.members.find((m: { id: number }) => m.id === eu.id);
+  // Renda padrão da pessoa não mudou
+  assert.equal(afterEu.monthly_income, beforeEu.monthly_income);
+  assert.equal(afterEu.extra_income, 250);
+  assert.equal(afterEu.total_income, beforeEu.monthly_income + 250);
+  assert.equal(Math.round((afterEu.free - beforeEu.free) * 100), 25000);
+  assert.ok(after.diagnosis.good.some((g: { id: string }) => g.id === 'renda-extra'));
+
+  // Atualizar e remover renda extra
+  const upd = await call('PUT', `/extra-incomes/${ex.body.id}`, {
+    member_id: eu.id,
+    title: 'Hora extra',
+    amount: 300,
+    date: today,
+  });
+  assert.equal(upd.status, 200);
+  assert.equal((await call('GET', `/summary?month=${month}`)).body.extra_income_total, 300);
+
+  assert.equal((await call('DELETE', `/extra-incomes/${ex.body.id}`)).status, 200);
+  assert.equal((await call('GET', `/summary?month=${month}`)).body.extra_income_total, 0);
+});
+
 test('login, logout e isolamento entre usuários', async () => {
   cookie = '';
   const bad = await call('POST', '/auth/login', { email: 'maria@teste.com', password: 'errada123' });

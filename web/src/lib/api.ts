@@ -1,5 +1,5 @@
 import { demoStore, enterDemoMode, exitDemoMode, isDemoMode } from './demo-store';
-import type { Expense, ExpenseInput, ExpenseStatus, Member, Reserve, ReserveKind, ReserveTx, Summary, Tag, User } from './types';
+import type { Expense, ExpenseInput, ExpenseStatus, ExtraIncome, ExtraIncomeInput, Member, Reserve, ReserveKind, ReserveTx, Summary, Tag, User } from './types';
 
 export class ApiError extends Error {
   constructor(
@@ -65,6 +65,12 @@ export const api = {
   updateMember: (id: number, b: Pick<Member, 'name' | 'monthly_income'>) =>
     isDemoMode() ? demoStore.updateMember(id, b) : put<Member>(`/members/${id}`, b),
   deleteMember: (id: number) => (isDemoMode() ? demoStore.deleteMember(id) : del(`/members/${id}`)),
+
+  extraIncomes: (month: string) => (isDemoMode() ? demoStore.extraIncomes(month) : get<ExtraIncome[]>(`/extra-incomes?month=${month}`)),
+  addExtraIncome: (b: ExtraIncomeInput) => (isDemoMode() ? demoStore.addExtraIncome(b) : post<ExtraIncome>('/extra-incomes', b)),
+  updateExtraIncome: (id: number, b: ExtraIncomeInput) =>
+    isDemoMode() ? demoStore.updateExtraIncome(id, b) : put<ExtraIncome>(`/extra-incomes/${id}`, b),
+  deleteExtraIncome: (id: number) => (isDemoMode() ? demoStore.deleteExtraIncome(id) : del(`/extra-incomes/${id}`)),
 
   expenses: (month: string) => (isDemoMode() ? demoStore.expenses(month) : get<Expense[]>(`/expenses?month=${month}`)),
   addExpense: (b: ExpenseInput) =>

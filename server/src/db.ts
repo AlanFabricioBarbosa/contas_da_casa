@@ -82,6 +82,17 @@ CREATE TABLE IF NOT EXISTS reserve_transactions (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_rtx_reserve ON reserve_transactions(reserve_id, date);
+CREATE TABLE IF NOT EXISTS extra_incomes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  member_id INTEGER NOT NULL REFERENCES household_members(id) ON DELETE CASCADE,
+  month_year TEXT NOT NULL,
+  title TEXT NOT NULL,
+  amount REAL NOT NULL CHECK (amount > 0),
+  date TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_extra_user_month ON extra_incomes(user_id, month_year);
 CREATE TABLE IF NOT EXISTS expense_tags (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -162,6 +173,18 @@ CREATE TABLE IF NOT EXISTS reserve_transactions (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_rtx_reserve ON reserve_transactions(reserve_id, date);
+
+CREATE TABLE IF NOT EXISTS extra_incomes (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  member_id INTEGER NOT NULL REFERENCES household_members(id) ON DELETE CASCADE,
+  month_year TEXT NOT NULL,
+  title TEXT NOT NULL,
+  amount DOUBLE PRECISION NOT NULL CHECK (amount > 0),
+  date TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_extra_user_month ON extra_incomes(user_id, month_year);
 
 CREATE TABLE IF NOT EXISTS expense_tags (
   id SERIAL PRIMARY KEY,

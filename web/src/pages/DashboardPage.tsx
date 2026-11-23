@@ -50,7 +50,16 @@ function SummaryCards({ s }: { s: Summary }) {
   const blue = s.balance >= 0;
   return (
     <section aria-label="Resumo do mês" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-      <StatCard icon={<Wallet className="size-4" />} label="Renda Total" value={brlFmt(s.income_total)} sub="o que entra por mês" />
+      <StatCard
+        icon={<Wallet className="size-4" />}
+        label="Renda Total"
+        value={brlFmt(s.income_total)}
+        sub={
+          s.extra_income_total > 0
+            ? `Padrão ${brlFmt(s.base_income_total)} + Extra ${brlFmt(s.extra_income_total)}`
+            : 'renda padrão (sem extras no mês)'
+        }
+      />
       <StatCard
         icon={<Receipt className="size-4" />}
         label="Total de Gastos"
@@ -149,14 +158,17 @@ function PeopleCard({ s }: { s: Summary }) {
       <CardContent className="flex flex-col gap-4">
         {s.members.length === 0 && <p className="text-sm text-muted-foreground">Nenhuma pessoa cadastrada ainda.</p>}
         {s.members.map((m) => {
-          const used = m.monthly_income > 0 ? (m.owes / m.monthly_income) * 100 : m.owes > 0 ? 100 : 0;
+          const used = m.total_income > 0 ? (m.owes / m.total_income) * 100 : m.owes > 0 ? 100 : 0;
           const neg = m.free < 0;
           return (
             <div key={m.id} className="rounded-lg border p-3">
-              <div className="flex items-baseline justify-between gap-2">
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <p className="font-semibold">{m.name}</p>
                 <p className="text-xs text-muted-foreground">
-                  ganha {brlFmt(m.monthly_income)} · {pctFmt(m.income_share)} da renda
+                  padrão {brlFmt(m.monthly_income)}
+                  {m.extra_income > 0 ? <span className="font-medium text-good"> + {brlFmt(m.extra_income)} extra</span> : null}
+                  {' · '}
+                  {pctFmt(m.income_share)} da divisão
                 </p>
               </div>
               <div className="mt-2 grid grid-cols-2 gap-2">

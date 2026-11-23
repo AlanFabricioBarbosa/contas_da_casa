@@ -109,6 +109,7 @@ export async function seedDemo(db: Db, userId: number, today: string) {
 
 export async function clearUserData(db: Db, userId: number) {
   await tx(db, async (tdb) => {
+    await run(tdb, 'DELETE FROM extra_incomes WHERE user_id = ?', userId);
     await run(tdb, 'DELETE FROM expenses WHERE user_id = ?', userId);
     await run(tdb, 'DELETE FROM reserves WHERE user_id = ?', userId);
     await run(tdb, 'DELETE FROM expense_tags WHERE user_id = ?', userId);

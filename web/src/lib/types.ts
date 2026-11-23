@@ -21,6 +21,24 @@ export interface Member {
   updated_at?: string | null;
 }
 
+export interface ExtraIncome {
+  id: number;
+  member_id: number;
+  member_name: string;
+  month_year: string;
+  title: string;
+  amount: number;
+  date: string;
+  created_at: string;
+}
+
+export interface ExtraIncomeInput {
+  member_id: number;
+  title: string;
+  amount: number;
+  date: string;
+}
+
 export interface Expense {
   id: number;
   month_year: string;
@@ -95,6 +113,8 @@ export interface Insight {
 export interface Summary {
   month: string;
   today: string;
+  base_income_total: number;
+  extra_income_total: number;
   income_total: number;
   expenses_total: number;
   paid_total: number;
@@ -109,6 +129,8 @@ export interface Summary {
     id: number;
     name: string;
     monthly_income: number;
+    extra_income: number;
+    total_income: number;
     income_share: number;
     owes: number;
     owes_paid: number;

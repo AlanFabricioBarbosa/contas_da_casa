@@ -22,6 +22,7 @@ export interface DiagnosisInput {
   today: string;
   month: string;
   incomeTotal: number;
+  extraIncomeTotal?: number;
   hasMembers: boolean;
   expensesTotal: number;
   expenseCount: number;
@@ -293,6 +294,15 @@ export function buildDiagnosis(i: DiagnosisInput): Diagnosis {
       severity: 'good',
       title: 'Todas as contas do mês estão pagas',
       message: 'Nada pendente. Isso é tranquilidade!',
+    });
+  }
+
+  if ((i.extraIncomeTotal ?? 0) > 0) {
+    good.push({
+      id: 'renda-extra',
+      severity: 'good',
+      title: `Você ganhou ${formatBRL(i.extraIncomeTotal!)} de renda extra no mês`,
+      message: 'Esse dinheiro a mais ajuda a aliviar as contas ou reforçar a reserva sem depender só da renda padrão.',
     });
   }
 
