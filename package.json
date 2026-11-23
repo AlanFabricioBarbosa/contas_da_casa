@@ -1,7 +1,7 @@
 {
   "name": "controle-financeiro-familiar",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.0.8",
   "description": "Plataforma de controle financeiro pessoal e familiar (PT-BR)",
   "workspaces": [
     "server",

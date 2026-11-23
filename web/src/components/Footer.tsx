@@ -13,6 +13,8 @@ export function Footer({ className }: { className?: string }) {
       >
         LinkedIn
       </a>
+      <span aria-hidden> · </span>
+      <span className="tabular opacity-75">{__APP_VERSION__}</span>
     </footer>
   );
 }
