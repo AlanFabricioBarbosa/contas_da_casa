@@ -1,4 +1,4 @@
-import type { Expense, ExpenseInput, ExpenseStatus, Member, Reserve, ReserveKind, ReserveTx, Summary, User } from './types';
+import type { Tag, Expense, ExpenseInput, ExpenseStatus, Member, Reserve, ReserveKind, ReserveTx, Summary, User } from './types';
 
 export class ApiError extends Error {
   constructor(
@@ -65,6 +65,11 @@ export const api = {
   deleteExpense: (id: number) => del(`/expenses/${id}`),
   duplicateFixed: (to: string, from?: string) =>
     post<{ copied: number; skipped: number; found: number; from: string; to: string }>('/expenses/duplicate-fixed', { to, from }),
+
+  tags: () => get<Tag[]>('/tags'),
+  addTag: (b: Omit<Tag, 'id'>) => post<Tag>('/tags', b),
+  updateTag: (id: number, b: Omit<Tag, 'id'>) => put<Tag>(`/tags/${id}`, b),
+  deleteTag: (id: number) => del(`/tags/${id}`),
 
   reserves: () => get<Reserve[]>('/reserves'),
   addReserve: (b: { name: string; kind: ReserveKind; target_amount: number; current_amount: number }) => post<Reserve>('/reserves', b),

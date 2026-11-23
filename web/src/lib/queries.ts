@@ -5,6 +5,7 @@ import { useToast } from '@/components/ui/toast';
 export const useMembers = () => useQuery({ queryKey: ['members'], queryFn: api.members });
 export const useSummary = (month: string) => useQuery({ queryKey: ['summary', month], queryFn: () => api.summary(month) });
 export const useExpenses = (month: string) => useQuery({ queryKey: ['expenses', month], queryFn: () => api.expenses(month) });
+export const useTags = () => useQuery({ queryKey: ['tags'], queryFn: api.tags });
 export const useReserves = () => useQuery({ queryKey: ['reserves'], queryFn: api.reserves });
 
 export const errMsg = (e: unknown) => (e instanceof ApiError ? e.message : 'Algo deu errado. Tente de novo.');

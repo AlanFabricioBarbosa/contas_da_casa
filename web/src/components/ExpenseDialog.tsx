@@ -78,7 +78,7 @@ function ExpenseForm({ expense, onDone }: { expense: Expense | null; onDone: () 
     if (!title.trim()) return setError('Informe o nome do gasto (ex.: Aluguel).');
     if (amount <= 0) return setError('Informe o valor do gasto.');
     if (chosen.length === 0) return setError('Escolha pelo menos uma pessoa.');
-    save.mutate({ title: title.trim(), amount, category, type, status, due_date: due, split_mode: mode, member_ids: chosen.map((m) => m.id) });
+    save.mutate({ title: title.trim(), amount, category, type, status, due_date: due, split_mode: mode, member_ids: chosen.map((m) => m.id), tag: expense?.tag ?? null });
   };
 
   return (

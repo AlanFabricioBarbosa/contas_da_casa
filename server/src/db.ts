@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS expenses (
   split_mode TEXT NOT NULL CHECK (split_mode IN ('individual','equal','proportional')),
   status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('paid','pending')),
   due_date TEXT NOT NULL,
+  tag TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_expenses_user_month ON expenses(user_id, month_year);
@@ -76,6 +77,15 @@ CREATE TABLE IF NOT EXISTS reserve_transactions (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_rtx_reserve ON reserve_transactions(reserve_id, date);
+CREATE TABLE IF NOT EXISTS expense_tags (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  category TEXT NOT NULL,
+  default_amount REAL NOT NULL DEFAULT 0 CHECK (default_amount >= 0),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (user_id, name)
+);
 `;
 
 const SCHEMA_PG = `
@@ -108,6 +118,7 @@ CREATE TABLE IF NOT EXISTS expenses (
   split_mode TEXT NOT NULL CHECK (split_mode IN ('individual','equal','proportional')),
   status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('paid','pending')),
   due_date TEXT NOT NULL,
+  tag TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_expenses_user_month ON expenses(user_id, month_year);
@@ -141,6 +152,18 @@ CREATE TABLE IF NOT EXISTS reserve_transactions (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_rtx_reserve ON reserve_transactions(reserve_id, date);
+
+CREATE TABLE IF NOT EXISTS expense_tags (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  category TEXT NOT NULL,
+  default_amount DOUBLE PRECISION NOT NULL DEFAULT 0 CHECK (default_amount >= 0),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (user_id, name)
+);
+
+ALTER TABLE expenses ADD COLUMN IF NOT EXISTS tag TEXT;
 `;
 
 function toPgSql(sql: string): string {
@@ -170,6 +193,8 @@ export async function openDb(file?: string): Promise<Db> {
   sqlite.exec('PRAGMA foreign_keys = ON;');
   if (target !== ':memory:') sqlite.exec('PRAGMA journal_mode = WAL;');
   sqlite.exec(SCHEMA_SQLITE);
+  const cols = sqlite.prepare('PRAGMA table_info(expenses)').all() as { name: string }[];
+  if (!cols.some((c) => c.name === 'tag')) sqlite.exec('ALTER TABLE expenses ADD COLUMN tag TEXT');
   return { kind: 'sqlite', sqlite };
 }
 

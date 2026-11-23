@@ -99,6 +99,45 @@ test('cadastro, exemplo, resumo, limpeza e fluxo de gastos', async () => {
   assert.equal((await call('GET', `/summary?month=${month}`)).body.expenses_total, 0);
 });
 
+test('tags: atalhos, gasto rápido e total por tag no resumo', async () => {
+  await call('POST', '/demo/load');
+  const { todayBR } = await import('./dates.js');
+  const today = todayBR();
+  const month = today.slice(0, 7);
+
+  const tags = (await call('GET', '/tags')).body;
+  assert.ok(tags.length >= 3);
+  const dup = await call('POST', '/tags', { name: tags[0].name, category: 'transporte', default_amount: 10 });
+  assert.equal(dup.status, 409);
+
+  const created = await call('POST', '/tags', { name: 'Estacionamento', category: 'transporte', default_amount: 8 });
+  assert.equal(created.status, 201);
+  const upd = await call('PUT', `/tags/${created.body.id}`, { name: 'Estacionamento', category: 'transporte', default_amount: 9.5 });
+  assert.equal(upd.body.default_amount, 9.5);
+
+  const before = (await call('GET', `/summary?month=${month}`)).body;
+  const beforeTag = before.tags.find((t: { name: string }) => t.name === 'Estacionamento');
+  assert.equal(beforeTag, undefined);
+
+  const members = (await call('GET', '/members')).body;
+  const q = await call('POST', '/expenses', {
+    title: 'Estacionamento', amount: 9.5, category: 'transporte', type: 'variable', split_mode: 'individual',
+    status: 'paid', due_date: today, member_ids: [members[0].id], tag: 'Estacionamento',
+  });
+  assert.equal(q.status, 201);
+  assert.equal(q.body.tag, 'Estacionamento');
+
+  const after = (await call('GET', `/summary?month=${month}`)).body;
+  const t = after.tags.find((x: { name: string }) => x.name === 'Estacionamento');
+  assert.deepEqual({ total: t.total, count: t.count }, { total: 9.5, count: 1 });
+  assert.equal(Math.round((after.expenses_total - before.expenses_total) * 100), 950);
+
+  assert.equal((await call('DELETE', `/tags/${created.body.id}`)).status, 200);
+  assert.equal((await call('DELETE', `/tags/${created.body.id}`)).status, 404);
+  await call('POST', '/demo/clear');
+  assert.equal((await call('GET', '/tags')).body.length, 0);
+});
+
 test('login, logout e isolamento entre usuários', async () => {
   cookie = '';
   const bad = await call('POST', '/auth/login', { email: 'maria@teste.com', password: 'errada123' });

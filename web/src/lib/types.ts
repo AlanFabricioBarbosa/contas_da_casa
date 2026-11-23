@@ -28,6 +28,7 @@ export interface Expense {
   split_mode: SplitMode;
   status: ExpenseStatus;
   due_date: string;
+  tag: string | null;
   splits: { member_id: number; assigned_amount: number }[];
 }
 
@@ -40,6 +41,14 @@ export interface ExpenseInput {
   status: ExpenseStatus;
   due_date: string;
   member_ids: number[];
+  tag?: string | null;
+}
+
+export interface Tag {
+  id: number;
+  name: string;
+  category: Category;
+  default_amount: number;
 }
 
 export interface Reserve {
@@ -92,6 +101,7 @@ export interface Summary {
     owes_pending: number;
     free: number;
   }[];
+  tags: { name: string; total: number; count: number }[];
   categories: { category: Category; total: number; share_of_expenses: number; share_of_income: number }[];
   diagnosis: { critical: Insight[]; attention: Insight[]; good: Insight[] };
 }

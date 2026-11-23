@@ -11,6 +11,7 @@ import { useSummary } from '@/lib/queries';
 import type { Insight, Summary } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { Skeleton } from './shared';
+import { QuickAdd } from '@/components/QuickAdd';
 
 export default function DashboardPage() {
   const { month } = useApp();
@@ -35,11 +36,12 @@ export default function DashboardPage() {
       )}
 
       <SummaryCards s={s} />
-      <Consultant s={s} />
+      <QuickAdd summary={s} />
       <div className="grid gap-6 lg:grid-cols-2">
         <PeopleCard s={s} />
         <CategoriesCard s={s} />
       </div>
+      <Consultant s={s} />
     </div>
   );
 }

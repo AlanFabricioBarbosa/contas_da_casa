@@ -32,6 +32,7 @@ export interface Summary {
     free: number;
   }[];
   categories: { category: Category; total: number; share_of_expenses: number; share_of_income: number }[];
+  tags: { name: string; total: number; count: number }[];
   diagnosis: Diagnosis;
 }
 
@@ -149,6 +150,14 @@ export async function buildSummary(db: Db, userId: number, month: string, today:
     today,
   );
 
+  const tagRows = await all<{ tag: string; total: number | string; n: number | string }>(
+    db,
+    `SELECT tag, SUM(amount) AS total, COUNT(*) AS n FROM expenses
+      WHERE user_id = ? AND month_year = ? AND tag IS NOT NULL GROUP BY tag ORDER BY total DESC`,
+    userId,
+    month,
+  );
+
   const byCategory = Object.fromEntries(CATEGORIES.map((c) => [c, fromCents(byCatC[c])])) as Record<Category, number>;
   const diagnosis = buildDiagnosis({
     today,
@@ -197,6 +206,7 @@ export async function buildSummary(db: Db, userId: number, month: string, today:
     savings_rate: incomeCents > 0 ? depC / incomeCents : 0,
     overdue_count: overdueItems.length,
     members: memberSummaries,
+    tags: tagRows.map((t) => ({ name: t.tag, total: fromCents(toCents(Number(t.total))), count: Number(t.n) })),
     categories: CATEGORIES.map((c) => ({
       category: c,
       total: fromCents(byCatC[c]),

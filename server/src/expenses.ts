@@ -14,6 +14,7 @@ export interface ExpenseRow {
   split_mode: SplitMode;
   status: ExpenseStatus;
   due_date: string;
+  tag: string | null;
 }
 
 export interface MemberRow {

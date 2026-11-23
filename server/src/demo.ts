@@ -67,6 +67,31 @@ export async function seedDemo(db: Db, userId: number, today: string) {
     await addList(prev, [...fixed('prev'), ...variable('prev')], true);
     await addList(month, [...fixed('now'), ...variable('now')], false);
 
+    // Tags (atalhos do dia a dia) e alguns gastinhos já lançados hoje
+    const tagDefs: { name: string; category: Category; amount: number }[] = [
+      { name: 'Uber / 99', category: 'transporte', amount: 15 },
+      { name: 'Lanche na rua', category: 'alimentacao', amount: 12.5 },
+      { name: 'Padaria', category: 'alimentacao', amount: 10 },
+      { name: 'Farmácia', category: 'saude', amount: 0 },
+      { name: 'Lazer / sorvete', category: 'lazer', amount: 0 },
+    ];
+    for (const t of tagDefs) {
+      await run(tdb, 'INSERT INTO expense_tags (user_id, name, category, default_amount) VALUES (?,?,?,?)', userId, t.name, t.category, t.amount);
+    }
+    const quick: { tag: string; amount: number; category: Category; who: 0 | 1 }[] = [
+      { tag: 'Uber / 99', amount: 24.9, category: 'transporte', who: 1 },
+      { tag: 'Lanche na rua', amount: 12.5, category: 'alimentacao', who: 0 },
+    ];
+    for (const q of quick) {
+      const id = await insert(
+        tdb,
+        `INSERT INTO expenses (user_id, month_year, title, amount, category, type, split_mode, status, due_date, tag)
+         VALUES (?,?,?,?,?,?,?,?,?,?)`,
+        userId, month, q.tag, q.amount, q.category, 'variable', 'individual', 'paid', today, q.tag,
+      );
+      await replaceSplits(tdb, id, 'individual', q.amount, [people[q.who]!]);
+    }
+
     // Reservas
     const reserve = (name: string, kind: string, target: number, current: number) =>
       insert(tdb, 'INSERT INTO reserves (user_id, name, kind, target_amount, current_amount) VALUES (?,?,?,?,?)', userId, name, kind, target, current);
@@ -86,6 +111,7 @@ export async function clearUserData(db: Db, userId: number) {
   await tx(db, async (tdb) => {
     await run(tdb, 'DELETE FROM expenses WHERE user_id = ?', userId);
     await run(tdb, 'DELETE FROM reserves WHERE user_id = ?', userId);
+    await run(tdb, 'DELETE FROM expense_tags WHERE user_id = ?', userId);
     await run(tdb, 'DELETE FROM household_members WHERE user_id = ?', userId);
     await run(tdb, 'UPDATE users SET has_demo_data = 0 WHERE id = ?', userId);
   });

@@ -54,6 +54,13 @@ const expenseBody = z.object({
   status: z.enum(EXPENSE_STATUS).default('pending'),
   due_date: z.string({ error: 'Informe o vencimento.' }).refine(isValidDate, 'Data de vencimento inválida.'),
   member_ids: z.array(z.number().int()).min(1, 'Escolha pelo menos uma pessoa.'),
+  tag: z.string().trim().max(40).nullable().optional(),
+});
+
+const tagBody = z.object({
+  name: name('o nome da tag', 40),
+  category: z.enum(CATEGORIES, { error: 'Escolha uma categoria.' }),
+  default_amount: money().refine((v) => v >= 0, 'O valor não pode ser negativo.').default(0),
 });
 
 const memberBody = z.object({
@@ -290,9 +297,9 @@ export function createApp(db: Db) {
     const id = await tx(db, async (tdb) => {
       const createdId = await insert(
         tdb,
-        `INSERT INTO expenses (user_id, month_year, title, amount, category, type, split_mode, status, due_date)
-         VALUES (?,?,?,?,?,?,?,?,?)`,
-        req.userId!, b.due_date.slice(0, 7), b.title, b.amount, b.category, b.type, b.split_mode, b.status, b.due_date,
+        `INSERT INTO expenses (user_id, month_year, title, amount, category, type, split_mode, status, due_date, tag)
+         VALUES (?,?,?,?,?,?,?,?,?,?)`,
+        req.userId!, b.due_date.slice(0, 7), b.title, b.amount, b.category, b.type, b.split_mode, b.status, b.due_date, b.tag || null,
       );
       await replaceSplits(tdb, createdId, b.split_mode, b.amount, members);
       return createdId;
@@ -308,9 +315,9 @@ export function createApp(db: Db) {
     await tx(db, async (tdb) => {
       await run(
         tdb,
-        `UPDATE expenses SET month_year = ?, title = ?, amount = ?, category = ?, type = ?, split_mode = ?, status = ?, due_date = ?
+        `UPDATE expenses SET month_year = ?, title = ?, amount = ?, category = ?, type = ?, split_mode = ?, status = ?, due_date = ?, tag = ?
           WHERE id = ? AND user_id = ?`,
-        b.due_date.slice(0, 7), b.title, b.amount, b.category, b.type, b.split_mode, b.status, b.due_date, id, req.userId!,
+        b.due_date.slice(0, 7), b.title, b.amount, b.category, b.type, b.split_mode, b.status, b.due_date, b.tag || null, id, req.userId!,
       );
       await replaceSplits(tdb, id, b.split_mode, b.amount, members);
     });
@@ -336,6 +343,36 @@ export function createApp(db: Db) {
     if (from === b.to) throw new HttpError(400, 'Escolha meses diferentes.');
     const result = await tx(db, (tdb) => duplicateFixed(tdb, req.userId!, from, b.to));
     res.json({ ...result, from, to: b.to });
+  });
+
+  /* ---------------- Tags (atalhos para gastos do dia a dia) ---------------- */
+  api.get('/tags', async (req, res) => {
+    res.json(await all(db, 'SELECT id, name, category, default_amount FROM expense_tags WHERE user_id = ? ORDER BY id', req.userId!));
+  });
+
+  api.post('/tags', async (req, res) => {
+    const b = tagBody.parse(req.body);
+    if (await get(db, 'SELECT 1 AS x FROM expense_tags WHERE user_id = ? AND name = ?', req.userId!, b.name)) {
+      throw new HttpError(409, 'Você já tem uma tag com esse nome.');
+    }
+    const id = await insert(db, 'INSERT INTO expense_tags (user_id, name, category, default_amount) VALUES (?,?,?,?)', req.userId!, b.name, b.category, b.default_amount);
+    res.status(201).json(await get(db, 'SELECT id, name, category, default_amount FROM expense_tags WHERE id = ?', id));
+  });
+
+  api.put('/tags/:id', async (req, res) => {
+    const b = tagBody.parse(req.body);
+    const id = Number(req.params.id);
+    const clash = await get<{ id: number }>(db, 'SELECT id FROM expense_tags WHERE user_id = ? AND name = ?', req.userId!, b.name);
+    if (clash && clash.id !== id) throw new HttpError(409, 'Você já tem uma tag com esse nome.');
+    const r = await run(db, 'UPDATE expense_tags SET name = ?, category = ?, default_amount = ? WHERE id = ? AND user_id = ?', b.name, b.category, b.default_amount, id, req.userId!);
+    if (!r.changes) throw new HttpError(404, 'Tag não encontrada.');
+    res.json(await get(db, 'SELECT id, name, category, default_amount FROM expense_tags WHERE id = ?', id));
+  });
+
+  api.delete('/tags/:id', async (req, res) => {
+    const r = await run(db, 'DELETE FROM expense_tags WHERE id = ? AND user_id = ?', Number(req.params.id), req.userId!);
+    if (!r.changes) throw new HttpError(404, 'Tag não encontrada.');
+    res.json({ ok: true });
   });
 
   /* ---------------- Reservas ---------------- */

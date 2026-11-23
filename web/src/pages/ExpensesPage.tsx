@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { CheckCircle2, Circle, Copy, Pencil, Plus, Trash2 } from 'lucide-react';
+import { CheckCircle2, Circle, Copy, Pencil, Plus, Tag as TagIcon, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -21,6 +21,7 @@ export default function ExpensesPage() {
   const members = useMembers();
   const [status, setStatus] = useState<'all' | 'pending' | 'paid'>('all');
   const [cat, setCat] = useState<Category | 'all'>('all');
+  const [tagFilter, setTagFilter] = useState('all');
   const [editing, setEditing] = useState<Expense | null>(null);
   const [removing, setRemoving] = useState<Expense | null>(null);
   const today = todayBR();
@@ -38,7 +39,8 @@ export default function ExpensesPage() {
 
   const memberName = useMemo(() => new Map((members.data ?? []).map((m) => [m.id, m.name])), [members.data]);
   const all = q.data ?? [];
-  const list = all.filter((e) => (status === 'all' || e.status === status) && (cat === 'all' || e.category === cat));
+  const list = all.filter((e) => (status === 'all' || e.status === status) && (cat === 'all' || e.category === cat) && (tagFilter === 'all' || e.tag === tagFilter));
+  const tagNames = [...new Set(all.map((e) => e.tag).filter((t): t is string => !!t))];
   const total = all.reduce((a, e) => a + e.amount, 0);
   const paid = all.filter((e) => e.status === 'paid').reduce((a, e) => a + e.amount, 0);
 
@@ -115,6 +117,16 @@ export default function ExpensesPage() {
                 </option>
               ))}
             </Select>
+            {tagNames.length > 0 && (
+              <Select aria-label="Filtrar por tag" className="h-9 w-auto" value={tagFilter} onChange={(e) => setTagFilter(e.target.value)}>
+                <option value="all">Todas as tags</option>
+                {tagNames.map((t) => (
+                  <option key={t} value={t}>
+                    # {t}
+                  </option>
+                ))}
+              </Select>
+            )}
           </div>
 
           {list.length === 0 && <p className="py-8 text-center text-sm text-muted-foreground">Nenhum gasto com esse filtro.</p>}
@@ -144,6 +156,11 @@ export default function ExpensesPage() {
                           <info.icon className="size-3" aria-hidden /> {info.label}
                         </Badge>
                         <Badge>{e.type === 'fixed' ? 'Fixo' : 'Variável'}</Badge>
+                        {e.tag && (
+                          <Badge tone="primary">
+                            <TagIcon className="size-3" aria-hidden /> {e.tag}
+                          </Badge>
+                        )}
                         <Badge tone={overdue ? 'danger' : e.status === 'paid' ? 'good' : 'neutral'}>
                           {overdue ? 'Atrasado · ' : e.status === 'paid' ? 'Pago · ' : 'Vence '}
                           {shortDate(e.due_date)}
