@@ -20,11 +20,13 @@ export const CATEGORY_LABELS: Record<Category, string> = {
 };
 
 export const EXPENSE_TYPES = ['fixed', 'variable'] as const;
+export const EXPENSE_FREQUENCIES = ['daily', 'weekly', 'monthly'] as const;
 export const SPLIT_MODES = ['individual', 'equal', 'proportional'] as const;
 export const EXPENSE_STATUS = ['paid', 'pending'] as const;
 export const RESERVE_KINDS = ['emergency', 'annual', 'goal', 'other'] as const;
 
 export type ExpenseType = (typeof EXPENSE_TYPES)[number];
+export type ExpenseFrequency = (typeof EXPENSE_FREQUENCIES)[number];
 export type SplitMode = (typeof SPLIT_MODES)[number];
 export type ExpenseStatus = (typeof EXPENSE_STATUS)[number];
 export type ReserveKind = (typeof RESERVE_KINDS)[number];

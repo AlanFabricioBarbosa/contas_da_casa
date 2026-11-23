@@ -6,8 +6,8 @@ import express, { type NextFunction, type Request, type Response } from 'express
 import { z, ZodError } from 'zod';
 import { all, get, insert, run, tx, type Db } from './db.js';
 import { endSession, hashPassword, rateLimit, requireAuth, startSession, verifyPassword } from './auth.js';
-import { CATEGORIES, EXPENSE_STATUS, EXPENSE_TYPES, RESERVE_KINDS, SPLIT_MODES } from './constants.js';
-import { currentMonth, isMonth, isValidDate, prevMonth, todayBR } from './dates.js';
+import { CATEGORIES, EXPENSE_FREQUENCIES, EXPENSE_STATUS, EXPENSE_TYPES, RESERVE_KINDS, SPLIT_MODES } from './constants.js';
+import { addDays, currentMonth, dateInMonth, isMonth, isValidDate, prevMonth, shiftMonth, todayBR } from './dates.js';
 import { clearUserData, seedDemo } from './demo.js';
 import {
   duplicateFixed,
@@ -18,7 +18,7 @@ import {
   type ExpenseRow,
 } from './expenses.js';
 import { buildSummary } from './summary.js';
-import { fromCents, toCents } from './money.js';
+import { allocate, fromCents, toCents } from './money.js';
 
 class HttpError extends Error {
   constructor(
@@ -50,11 +50,17 @@ const expenseBody = z.object({
   amount: money().refine((v) => v > 0, 'O valor deve ser maior que zero.'),
   category: z.enum(CATEGORIES, { error: 'Escolha uma categoria.' }),
   type: z.enum(EXPENSE_TYPES, { error: 'Escolha fixo ou variável.' }),
+  frequency: z.enum(EXPENSE_FREQUENCIES).default('monthly'),
   split_mode: z.enum(SPLIT_MODES, { error: 'Escolha como dividir.' }),
   status: z.enum(EXPENSE_STATUS).default('pending'),
   due_date: z.string({ error: 'Informe o vencimento.' }).refine(isValidDate, 'Data de vencimento inválida.'),
   member_ids: z.array(z.number().int()).min(1, 'Escolha pelo menos uma pessoa.'),
   tag: z.string().trim().max(40).nullable().optional(),
+});
+
+const createExpenseBody = expenseBody.extend({
+  installments: z.number().int().min(1, 'Mínimo 1 parcela.').max(60, 'Máximo de 60 parcelas.').default(1),
+  installment_amount_mode: z.enum(['total', 'installment']).default('total'),
 });
 
 const tagBody = z.object({
@@ -300,19 +306,51 @@ export function createApp(db: Db) {
   });
 
   api.post('/expenses', async (req, res) => {
-    const b = expenseBody.parse(req.body);
+    const b = createExpenseBody.parse(req.body);
     const members = await pickMembers(req.userId!, b.split_mode, b.member_ids);
-    const id = await tx(db, async (tdb) => {
-      const createdId = await insert(
-        tdb,
-        `INSERT INTO expenses (user_id, month_year, title, amount, category, type, split_mode, status, due_date, tag)
-         VALUES (?,?,?,?,?,?,?,?,?,?)`,
-        req.userId!, b.due_date.slice(0, 7), b.title, b.amount, b.category, b.type, b.split_mode, b.status, b.due_date, b.tag || null,
-      );
-      await replaceSplits(tdb, createdId, b.split_mode, b.amount, members);
-      return createdId;
+    if (b.installments > 1 && b.installment_amount_mode === 'total' && toCents(b.amount) < b.installments) {
+      throw new HttpError(400, 'O valor total precisa dar pelo menos R$ 0,01 por parcela.');
+    }
+
+    const firstId = await tx(db, async (tdb) => {
+      if (b.installments === 1) {
+        const createdId = await insert(
+          tdb,
+          `INSERT INTO expenses (user_id, month_year, title, amount, category, type, frequency, split_mode, status, due_date, tag)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+          req.userId!, b.due_date.slice(0, 7), b.title, b.amount, b.category, b.type, b.frequency, b.split_mode, b.status, b.due_date, b.tag || null,
+        );
+        await replaceSplits(tdb, createdId, b.split_mode, b.amount, members);
+        return createdId;
+      }
+
+      const group = crypto.randomUUID();
+      const centsList =
+        b.installment_amount_mode === 'total'
+          ? allocate(toCents(b.amount), Array(b.installments).fill(1))
+          : Array<number>(b.installments).fill(toCents(b.amount));
+      const startMonth = b.due_date.slice(0, 7);
+      const startDay = Number(b.due_date.slice(8, 10));
+      const freq = b.frequency === 'weekly' ? 'weekly' : 'monthly';
+
+      let headId = 0;
+      for (let k = 0; k < b.installments; k++) {
+        const due = freq === 'weekly' ? addDays(b.due_date, k * 7) : dateInMonth(shiftMonth(startMonth, k), startDay);
+        const amt = fromCents(centsList[k]!);
+        const st = k === 0 ? b.status : 'pending';
+        const createdId = await insert(
+          tdb,
+          `INSERT INTO expenses (user_id, month_year, title, amount, category, type, frequency, split_mode, status, due_date, tag, installment_group, installment_num, installment_total)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+          req.userId!, due.slice(0, 7), b.title, amt, b.category, 'variable', freq, b.split_mode, st, due, b.tag || null, group, k + 1, b.installments,
+        );
+        await replaceSplits(tdb, createdId, b.split_mode, amt, members);
+        if (k === 0) headId = createdId;
+      }
+      return headId;
     });
-    res.status(201).json(await loadExpense(req.userId!, id));
+    const head = await loadExpense(req.userId!, firstId);
+    res.status(201).json({ ...head, created_count: b.installments });
   });
 
   api.put('/expenses/:id', async (req, res) => {
@@ -323,9 +361,9 @@ export function createApp(db: Db) {
     await tx(db, async (tdb) => {
       await run(
         tdb,
-        `UPDATE expenses SET month_year = ?, title = ?, amount = ?, category = ?, type = ?, split_mode = ?, status = ?, due_date = ?, tag = ?
+        `UPDATE expenses SET month_year = ?, title = ?, amount = ?, category = ?, type = ?, frequency = ?, split_mode = ?, status = ?, due_date = ?, tag = ?
           WHERE id = ? AND user_id = ?`,
-        b.due_date.slice(0, 7), b.title, b.amount, b.category, b.type, b.split_mode, b.status, b.due_date, b.tag || null, id, req.userId!,
+        b.due_date.slice(0, 7), b.title, b.amount, b.category, b.type, b.frequency, b.split_mode, b.status, b.due_date, b.tag || null, id, req.userId!,
       );
       await replaceSplits(tdb, id, b.split_mode, b.amount, members);
     });
@@ -340,9 +378,24 @@ export function createApp(db: Db) {
   });
 
   api.delete('/expenses/:id', async (req, res) => {
-    const r = await run(db, 'DELETE FROM expenses WHERE id = ? AND user_id = ?', Number(req.params.id), req.userId!);
+    const id = Number(req.params.id);
+    if (req.query.all === '1') {
+      const row = await get<{ installment_group: string | null }>(
+        db,
+        'SELECT installment_group FROM expenses WHERE id = ? AND user_id = ?',
+        id,
+        req.userId!,
+      );
+      if (!row) throw new HttpError(404, 'Gasto não encontrado.');
+      if (row.installment_group) {
+        const r = await run(db, 'DELETE FROM expenses WHERE installment_group = ? AND user_id = ?', row.installment_group, req.userId!);
+        res.json({ ok: true, deleted: r.changes });
+        return;
+      }
+    }
+    const r = await run(db, 'DELETE FROM expenses WHERE id = ? AND user_id = ?', id, req.userId!);
     if (!r.changes) throw new HttpError(404, 'Gasto não encontrado.');
-    res.json({ ok: true });
+    res.json({ ok: true, deleted: 1 });
   });
 
   api.post('/expenses/duplicate-fixed', async (req, res) => {
@@ -355,7 +408,7 @@ export function createApp(db: Db) {
 
   /* ---------------- Tags (atalhos para gastos do dia a dia) ---------------- */
   api.get('/tags', async (req, res) => {
-    res.json(await all(db, 'SELECT id, name, category, default_amount FROM expense_tags WHERE user_id = ? ORDER BY id', req.userId!));
+    res.json(await all(db, 'SELECT id, name, category, default_amount, created_at FROM expense_tags WHERE user_id = ? ORDER BY id', req.userId!));
   });
 
   api.post('/tags', async (req, res) => {
@@ -364,7 +417,7 @@ export function createApp(db: Db) {
       throw new HttpError(409, 'Você já tem uma tag com esse nome.');
     }
     const id = await insert(db, 'INSERT INTO expense_tags (user_id, name, category, default_amount) VALUES (?,?,?,?)', req.userId!, b.name, b.category, b.default_amount);
-    res.status(201).json(await get(db, 'SELECT id, name, category, default_amount FROM expense_tags WHERE id = ?', id));
+    res.status(201).json(await get(db, 'SELECT id, name, category, default_amount, created_at FROM expense_tags WHERE id = ?', id));
   });
 
   api.put('/tags/:id', async (req, res) => {
@@ -374,7 +427,7 @@ export function createApp(db: Db) {
     if (clash && clash.id !== id) throw new HttpError(409, 'Você já tem uma tag com esse nome.');
     const r = await run(db, 'UPDATE expense_tags SET name = ?, category = ?, default_amount = ? WHERE id = ? AND user_id = ?', b.name, b.category, b.default_amount, id, req.userId!);
     if (!r.changes) throw new HttpError(404, 'Tag não encontrada.');
-    res.json(await get(db, 'SELECT id, name, category, default_amount FROM expense_tags WHERE id = ?', id));
+    res.json(await get(db, 'SELECT id, name, category, default_amount, created_at FROM expense_tags WHERE id = ?', id));
   });
 
   api.delete('/tags/:id', async (req, res) => {

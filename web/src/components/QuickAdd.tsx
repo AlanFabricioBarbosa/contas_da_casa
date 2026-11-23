@@ -1,17 +1,18 @@
 import { useState } from 'react';
-import { Plus, Settings2, Trash2, Zap } from 'lucide-react';
+import { Clock, Plus, Settings2, Trash2, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ConfirmDialog, Dialog } from '@/components/ui/dialog';
 import { CurrencyInput, Field, Input, Select } from '@/components/ui/field';
 import { api } from '@/lib/api';
-import { CATEGORY_INFO, CATEGORY_ORDER } from '@/lib/categories';
-import { brlFmt, fullDate, todayBR } from '@/lib/format';
-import { useAction, useMembers, useTags } from '@/lib/queries';
+import { useApp } from '@/lib/app-context';
+import { CATEGORY_INFO, CATEGORY_ORDER, FREQUENCY_INFO, FREQUENCY_ORDER } from '@/lib/categories';
+import { brlFmt, formatDateTime, formatShortDateTime, pctFmt } from '@/lib/format';
+import { useAction, useTags } from '@/lib/queries';
 import type { Summary, Tag } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
-const SUGGESTED: Omit<Tag, 'id'>[] = [
+const SUGGESTED: Pick<Tag, 'name' | 'category' | 'default_amount'>[] = [
   { name: 'Uber / 99', category: 'transporte', default_amount: 15 },
   { name: 'Lanche na rua', category: 'alimentacao', default_amount: 12.5 },
   { name: 'Padaria', category: 'alimentacao', default_amount: 10 },
@@ -19,10 +20,10 @@ const SUGGESTED: Omit<Tag, 'id'>[] = [
   { name: 'Lazer / sorvete', category: 'lazer', default_amount: 0 },
 ];
 
-/** Atalhos (tags) para lançar em poucos toques os gastinhos do dia a dia. */
+/** Resumo por frequência (Do dia / Semanal / Mensal) e tags rápidas que abrem o formulário único de gasto. */
 export function QuickAdd({ summary }: { summary: Summary }) {
+  const { openExpenseForm } = useApp();
   const tags = useTags();
-  const [spend, setSpend] = useState<Tag | null>(null);
   const [form, setForm] = useState<Tag | 'new' | null>(null);
   const [removing, setRemoving] = useState<Tag | null>(null);
   const [manage, setManage] = useState(false);
@@ -34,15 +35,16 @@ export function QuickAdd({ summary }: { summary: Summary }) {
 
   const totals = new Map(summary.tags.map((t) => [t.name, t]));
   const list = tags.data ?? [];
+  const totalFreq = summary.expenses_total;
 
   return (
     <Card>
       <CardHeader className="flex-row items-start justify-between gap-2">
         <div>
           <CardTitle className="flex items-center gap-2">
-            <Zap className="size-4 text-primary" aria-hidden /> Gastos do dia a dia
+            <Zap className="size-4 text-primary" aria-hidden /> Como o dinheiro sai no mês
           </CardTitle>
-          <CardDescription>Toque numa tag para lançar na hora. Os totais abaixo são do mês selecionado.</CardDescription>
+          <CardDescription>Veja o peso do dia a dia, semanal e mensal — toque em um bloco ou tag para lançar.</CardDescription>
         </div>
         {list.length > 0 && (
           <Button variant={manage ? 'secondary' : 'ghost'} size="sm" onClick={() => setManage((m) => !m)} aria-pressed={manage}>
@@ -50,74 +52,123 @@ export function QuickAdd({ summary }: { summary: Summary }) {
           </Button>
         )}
       </CardHeader>
-      <CardContent>
-        {tags.isPending ? null : list.length === 0 ? (
-          <div className="rounded-lg border border-dashed p-4 text-center">
-            <p className="text-sm text-muted-foreground">Crie tags para os gastos pequenos e frequentes (Uber, lanche, padaria…) e lance cada um em 2 toques.</p>
-            <div className="mt-3 flex flex-wrap justify-center gap-2">
-              <Button onClick={() => suggest.mutate(undefined)} disabled={suggest.isPending}>
-                Adicionar tags sugeridas
-              </Button>
-              <Button variant="outline" onClick={() => setForm('new')}>
-                <Plus className="size-4" /> Criar minha tag
-              </Button>
-            </div>
+      <CardContent className="flex flex-col gap-4">
+        <div className="grid gap-2.5 sm:grid-cols-3">
+          {FREQUENCY_ORDER.map((f) => {
+            const info = FREQUENCY_INFO[f];
+            const stat = summary.by_frequency[f];
+            const share = totalFreq > 0 ? stat.total / totalFreq : 0;
+            return (
+              <div key={f} className="flex items-center justify-between gap-2 rounded-xl border p-3">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                    <span className="size-2 rounded-full" style={{ background: info.color }} aria-hidden />
+                    {info.label}
+                    {stat.count > 0 && <span>· {pctFmt(share)}</span>}
+                  </div>
+                  <p className="tabular mt-0.5 text-base font-bold sm:text-lg">{brlFmt(stat.total)}</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    {stat.count === 0 ? info.hint : `${stat.count} ${stat.count === 1 ? 'lançamento' : 'lançamentos'}`}
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => openExpenseForm({ frequency: f })}
+                  aria-label={`Novo gasto ${info.label}`}
+                  className="shrink-0"
+                >
+                  <Plus className="size-4" /> Lançar
+                </Button>
+              </div>
+            );
+          })}
+        </div>
+
+        {totalFreq > 0 && (
+          <div className="flex h-2 w-full overflow-hidden rounded-full bg-muted" aria-hidden>
+            {FREQUENCY_ORDER.map((f) => {
+              const pct = (summary.by_frequency[f].total / totalFreq) * 100;
+              return pct > 0 ? <div key={f} style={{ width: `${pct}%`, background: FREQUENCY_INFO[f].color }} /> : null;
+            })}
           </div>
-        ) : (
-          <ul className="flex flex-wrap gap-2">
-            {list.map((t) => {
-              const info = CATEGORY_INFO[t.category];
-              const tot = totals.get(t.name);
-              return (
-                <li key={t.id} className="flex items-stretch">
-                  <button
-                    type="button"
-                    onClick={() => (manage ? setForm(t) : setSpend(t))}
-                    className={cn(
-                      'flex min-h-12 cursor-pointer items-center gap-2 border bg-card px-3 text-left transition-colors hover:bg-muted',
-                      manage ? 'rounded-l-xl border-r-0' : 'rounded-xl',
-                    )}
-                    aria-label={manage ? `Editar tag ${t.name}` : `Lançar gasto em ${t.name}`}
-                  >
-                    <span className="grid size-8 shrink-0 place-items-center rounded-lg" style={{ background: `${info.color}22`, color: info.color }}>
-                      <info.icon className="size-4" aria-hidden />
-                    </span>
-                    <span className="leading-tight">
-                      <span className="block text-sm font-medium">{t.name}</span>
-                      <span className="block text-xs text-muted-foreground tabular">
-                        {tot ? `${brlFmt(tot.total)} · ${tot.count}×` : 'nada no mês'}
-                      </span>
-                    </span>
-                  </button>
-                  {manage && (
+        )}
+
+        <div>
+          <p className="mb-2 text-xs font-medium text-muted-foreground">Atalhos do dia a dia (tags)</p>
+          {tags.isPending ? null : list.length === 0 ? (
+            <div className="rounded-lg border border-dashed p-4 text-center">
+              <p className="text-sm text-muted-foreground">Crie tags para os gastos pequenos e frequentes (Uber, lanche, padaria…) e lance cada um em 2 toques.</p>
+              <div className="mt-3 flex flex-wrap justify-center gap-2">
+                <Button onClick={() => suggest.mutate(undefined)} disabled={suggest.isPending}>
+                  Adicionar tags sugeridas
+                </Button>
+                <Button variant="outline" onClick={() => setForm('new')}>
+                  <Plus className="size-4" /> Criar minha tag
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <ul className="grid grid-cols-1 gap-2 sm:flex sm:flex-wrap">
+              {list.map((t) => {
+                const info = CATEGORY_INFO[t.category];
+                const tot = totals.get(t.name);
+                const stamp = tot?.last_at ? `Último: ${formatShortDateTime(tot.last_at)}` : t.created_at ? `Criada: ${formatShortDateTime(t.created_at)}` : '';
+                return (
+                  <li key={t.id} className="flex min-w-0 items-stretch">
                     <button
                       type="button"
-                      onClick={() => setRemoving(t)}
-                      aria-label={`Excluir tag ${t.name}`}
-                      className="grid w-11 cursor-pointer place-items-center rounded-r-xl border text-danger hover:bg-danger-soft"
+                      onClick={() => (manage ? setForm(t) : openExpenseForm({ frequency: 'daily', tag: t }))}
+                      className={cn(
+                        'flex min-h-14 min-w-0 flex-1 cursor-pointer items-center gap-2.5 border bg-card px-3 py-2 text-left transition-colors hover:bg-muted sm:flex-initial',
+                        manage ? 'rounded-l-xl border-r-0' : 'rounded-xl',
+                      )}
+                      aria-label={manage ? `Editar tag ${t.name}` : `Lançar gasto em ${t.name}`}
                     >
-                      <Trash2 className="size-4" />
+                      <span className="grid size-8 shrink-0 place-items-center rounded-lg" style={{ background: `${info.color}22`, color: info.color }}>
+                        <info.icon className="size-4" aria-hidden />
+                      </span>
+                      <span className="flex min-w-0 flex-1 items-center justify-between gap-3 sm:block">
+                        <span className="min-w-0 leading-tight">
+                          <span className="block text-sm font-medium">{t.name}</span>
+                          {stamp && (
+                            <span className="mt-0.5 flex items-center gap-1 text-[11px] text-muted-foreground/80">
+                              <Clock className="size-3 shrink-0" aria-hidden /> {stamp}
+                            </span>
+                          )}
+                        </span>
+                        <span className="shrink-0 text-right text-xs font-medium text-muted-foreground tabular sm:mt-0.5 sm:block sm:text-left sm:font-normal">
+                          {tot ? `${brlFmt(tot.total)} · ${tot.count}×` : 'nada no mês'}
+                        </span>
+                      </span>
                     </button>
-                  )}
-                </li>
-              );
-            })}
-            <li>
-              <button
-                type="button"
-                onClick={() => setForm('new')}
-                className="flex min-h-12 cursor-pointer items-center gap-1.5 rounded-xl border border-dashed px-3 text-sm font-medium text-muted-foreground hover:bg-muted"
-              >
-                <Plus className="size-4" /> Nova tag
-              </button>
-            </li>
-          </ul>
-        )}
+                    {manage && (
+                      <button
+                        type="button"
+                        onClick={() => setRemoving(t)}
+                        aria-label={`Excluir tag ${t.name}`}
+                        className="grid w-10 shrink-0 cursor-pointer place-items-center rounded-r-xl border text-danger hover:bg-danger-soft sm:w-11"
+                      >
+                        <Trash2 className="size-4" />
+                      </button>
+                    )}
+                  </li>
+                );
+              })}
+              <li className="flex items-stretch">
+                <button
+                  type="button"
+                  onClick={() => setForm('new')}
+                  className="flex min-h-14 w-full cursor-pointer items-center justify-center gap-1.5 rounded-xl border border-dashed px-3 text-sm font-medium text-muted-foreground hover:bg-muted sm:w-auto"
+                >
+                  <Plus className="size-4" /> Nova tag
+                </button>
+              </li>
+            </ul>
+          )}
+        </div>
       </CardContent>
 
-      <Dialog open={!!spend} onClose={() => setSpend(null)} title={spend ? `Lançar: ${spend.name}` : ''}>
-        {spend && <SpendForm key={spend.id} tag={spend} onDone={() => setSpend(null)} />}
-      </Dialog>
       <Dialog open={!!form} onClose={() => setForm(null)} title={form && form !== 'new' ? 'Editar tag' : 'Nova tag'}>
         {form && <TagForm key={form === 'new' ? 'new' : form.id} tag={form === 'new' ? null : form} onDone={() => setForm(null)} />}
       </Dialog>
@@ -131,78 +182,6 @@ export function QuickAdd({ summary }: { summary: Summary }) {
         confirmLabel="Excluir tag"
       />
     </Card>
-  );
-}
-
-const ALL = 'all';
-
-function SpendForm({ tag, onDone }: { tag: Tag; onDone: () => void }) {
-  const members = useMembers();
-  const list = members.data ?? [];
-  const [amount, setAmount] = useState(tag.default_amount);
-  const [who, setWho] = useState<string>(() => localStorage.getItem('quemPagou') ?? '');
-  const [date, setDate] = useState(todayBR());
-  const [error, setError] = useState('');
-
-  const person = who === ALL ? ALL : list.some((m) => String(m.id) === who) ? who : list[0] ? String(list[0].id) : '';
-
-  const save = useAction(
-    () =>
-      api.addExpense({
-        title: tag.name,
-        amount,
-        category: tag.category,
-        type: 'variable',
-        split_mode: person === ALL ? 'equal' : 'individual',
-        status: 'paid',
-        due_date: date,
-        member_ids: person === ALL ? list.map((m) => m.id) : [Number(person)],
-        tag: tag.name,
-      }),
-    { success: `${tag.name}: ${brlFmt(amount)} lançado em ${fullDate(date)}.`, onSuccess: onDone },
-  );
-
-  if (members.isPending) return <p className="text-sm text-muted-foreground">Carregando…</p>;
-  if (list.length === 0) return <p className="text-sm">Cadastre as pessoas da casa primeiro (aba Pessoas).</p>;
-
-  return (
-    <form
-      className="flex flex-col gap-4"
-      onSubmit={(e) => {
-        e.preventDefault();
-        if (amount <= 0) return setError('Informe quanto foi.');
-        setError('');
-        localStorage.setItem('quemPagou', person);
-        save.mutate(undefined);
-      }}
-    >
-      <Field label="Quanto foi?" error={error}>
-        {(p) => <CurrencyInput {...p} value={amount} onChange={setAmount} autoFocus />}
-      </Field>
-      <Field label="Quem pagou?">
-        {(p) => (
-          <Select {...p} value={person} onChange={(e) => setWho(e.target.value)}>
-            {list.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.name}
-              </option>
-            ))}
-            {list.length > 1 && <option value={ALL}>Todos (dividir igualmente)</option>}
-          </Select>
-        )}
-      </Field>
-      <Field label="Data" hint="Já entra como pago, pois o dinheiro já saiu.">
-        {(p) => <Input {...p} type="date" required value={date} onChange={(e) => setDate(e.target.value)} />}
-      </Field>
-      <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-        <Button variant="outline" onClick={onDone}>
-          Cancelar
-        </Button>
-        <Button type="submit" disabled={save.isPending}>
-          {save.isPending ? 'Lançando…' : 'Lançar gasto'}
-        </Button>
-      </div>
-    </form>
   );
 }
 
@@ -228,6 +207,11 @@ function TagForm({ tag, onDone }: { tag: Tag | null; onDone: () => void }) {
         save.mutate(undefined);
       }}
     >
+      {tag?.created_at && (
+        <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <Clock className="size-3.5 shrink-0" aria-hidden /> Criada em {formatDateTime(tag.created_at)}
+        </p>
+      )}
       <Field label="Nome da tag" error={error}>
         {(p) => <Input {...p} value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex.: Uber, Lanche na rua" maxLength={40} autoFocus />}
       </Field>
@@ -256,4 +240,3 @@ function TagForm({ tag, onDone }: { tag: Tag | null; onDone: () => void }) {
     </form>
   );
 }
-

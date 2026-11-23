@@ -1,5 +1,13 @@
 import { Bus, CreditCard, HeartPulse, House, PartyPopper, ShoppingBasket, Zap, type LucideIcon } from 'lucide-react';
-import type { Category, ReserveKind } from './types';
+import type { Category, ExpenseFrequency, ReserveKind } from './types';
+
+export const FREQUENCY_ORDER: ExpenseFrequency[] = ['daily', 'weekly', 'monthly'];
+
+export const FREQUENCY_INFO: Record<ExpenseFrequency, { label: string; short: string; hint: string; color: string }> = {
+  daily: { label: 'Do dia', short: 'Do dia', hint: 'Uber, lanche, avulso', color: '#3b82f6' },
+  weekly: { label: 'Semanal', short: 'Semanal', hint: 'Feira, semana', color: '#a855f7' },
+  monthly: { label: 'Mensal', short: 'Mensal', hint: 'Aluguel, luz, conta do mês', color: '#0d9488' },
+};
 
 export const CATEGORY_ORDER: Category[] = ['moradia', 'contas_basicas', 'alimentacao', 'transporte', 'saude', 'dividas', 'lazer'];
 

@@ -116,6 +116,7 @@ test('tags: atalhos, gasto rápido e total por tag no resumo', async () => {
 
   const created = await call('POST', '/tags', { name: 'Estacionamento', category: 'transporte', default_amount: 8 });
   assert.equal(created.status, 201);
+  assert.ok(created.body.created_at);
   const upd = await call('PUT', `/tags/${created.body.id}`, { name: 'Estacionamento', category: 'transporte', default_amount: 9.5 });
   assert.equal(upd.body.default_amount, 9.5);
 
@@ -125,21 +126,85 @@ test('tags: atalhos, gasto rápido e total por tag no resumo', async () => {
 
   const members = (await call('GET', '/members')).body;
   const q = await call('POST', '/expenses', {
-    title: 'Estacionamento', amount: 9.5, category: 'transporte', type: 'variable', split_mode: 'individual',
+    title: 'Estacionamento', amount: 9.5, category: 'transporte', type: 'variable', frequency: 'daily', split_mode: 'individual',
     status: 'paid', due_date: today, member_ids: [members[0].id], tag: 'Estacionamento',
   });
   assert.equal(q.status, 201);
   assert.equal(q.body.tag, 'Estacionamento');
+  assert.equal(q.body.frequency, 'daily');
+
+  const w = await call('POST', '/expenses', {
+    title: 'Feira da semana', amount: 45, category: 'alimentacao', type: 'variable', frequency: 'weekly', split_mode: 'equal',
+    status: 'paid', due_date: today, member_ids: [members[0].id],
+  });
+  assert.equal(w.status, 201);
+  assert.equal(w.body.frequency, 'weekly');
 
   const after = (await call('GET', `/summary?month=${month}`)).body;
   const t = after.tags.find((x: { name: string }) => x.name === 'Estacionamento');
   assert.deepEqual({ total: t.total, count: t.count }, { total: 9.5, count: 1 });
-  assert.equal(Math.round((after.expenses_total - before.expenses_total) * 100), 950);
+  assert.ok(t.last_at);
+  assert.equal(after.by_frequency.weekly.total, 45);
+  assert.ok(after.by_frequency.daily.total >= 9.5);
+  assert.equal(Math.round((after.expenses_total - before.expenses_total) * 100), 5450);
+  const expList = (await call('GET', `/expenses?month=${month}`)).body;
+  assert.ok(expList.some((e: { id: number; tag: string | null }) => e.id === q.body.id && e.tag === 'Estacionamento'));
 
   assert.equal((await call('DELETE', `/tags/${created.body.id}`)).status, 200);
   assert.equal((await call('DELETE', `/tags/${created.body.id}`)).status, 404);
   await call('POST', '/demo/clear');
   assert.equal((await call('GET', '/tags')).body.length, 0);
+});
+
+test('compras parceladas: divide sem perder centavos, gera meses futuros e exclui o grupo', async () => {
+  await call('POST', '/demo/load');
+  const members = (await call('GET', '/members')).body;
+  const { shiftMonth } = await import('./dates.js');
+  const m1 = '2026-01';
+  const m2 = shiftMonth(m1, 1);
+  const m3 = shiftMonth(m1, 2);
+
+  // R$ 100,00 em 3x no dia 31 -> jan (31), fev (28), mar (31), soma exata 100,00
+  const p = await call('POST', '/expenses', {
+    title: 'Ventilador', amount: 100, category: 'moradia', type: 'fixed', frequency: 'monthly',
+    split_mode: 'equal', status: 'paid', due_date: `${m1}-31`,
+    member_ids: members.map((m: { id: number }) => m.id),
+    installments: 3, installment_amount_mode: 'total',
+  });
+  assert.equal(p.status, 201);
+  assert.equal(p.body.created_count, 3);
+  assert.equal(p.body.amount, 33.34);
+  assert.equal(p.body.status, 'paid');
+  assert.equal(p.body.installment_num, 1);
+  assert.equal(p.body.installment_total, 3);
+
+  const l2 = (await call('GET', `/expenses?month=${m2}`)).body.find((e: { title: string }) => e.title === 'Ventilador');
+  const l3 = (await call('GET', `/expenses?month=${m3}`)).body.find((e: { title: string }) => e.title === 'Ventilador');
+  assert.equal(l2.amount, 33.33);
+  assert.equal(l2.due_date, `${m2}-28`);
+  assert.equal(l2.status, 'pending');
+  assert.equal(l3.amount, 33.33);
+  assert.equal(l3.due_date, `${m3}-31`);
+  assert.equal(l3.installment_num, 3);
+
+  // Modo valor por parcela: 2x de R$ 50,00
+  const p2 = await call('POST', '/expenses', {
+    title: 'Tênis', amount: 50, category: 'lazer', type: 'variable', frequency: 'monthly',
+    split_mode: 'individual', status: 'pending', due_date: `${m1}-10`,
+    member_ids: [members[0].id],
+    installments: 2, installment_amount_mode: 'installment',
+  });
+  assert.equal(p2.status, 201);
+  assert.equal(p2.body.amount, 50);
+
+  // Excluir todas as parcelas de Ventilador
+  const delAll = await call('DELETE', `/expenses/${l2.id}?all=1`);
+  assert.equal(delAll.status, 200);
+  assert.equal(delAll.body.deleted, 3);
+  assert.equal((await call('GET', `/expenses?month=${m1}`)).body.some((e: { title: string }) => e.title === 'Ventilador'), false);
+  assert.equal((await call('GET', `/expenses?month=${m3}`)).body.some((e: { title: string }) => e.title === 'Ventilador'), false);
+
+  await call('POST', '/demo/clear');
 });
 
 test('login, logout e isolamento entre usuários', async () => {

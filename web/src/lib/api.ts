@@ -59,16 +59,16 @@ export const api = {
   deleteMember: (id: number) => del(`/members/${id}`),
 
   expenses: (month: string) => get<Expense[]>(`/expenses?month=${month}`),
-  addExpense: (b: ExpenseInput) => post<Expense>('/expenses', b),
+  addExpense: (b: ExpenseInput) => post<Expense & { created_count?: number }>('/expenses', b),
   updateExpense: (id: number, b: ExpenseInput) => put<Expense>(`/expenses/${id}`, b),
   setExpenseStatus: (id: number, status: ExpenseStatus) => patch<Expense>(`/expenses/${id}/status`, { status }),
-  deleteExpense: (id: number) => del(`/expenses/${id}`),
+  deleteExpense: (id: number, all = false) => del<{ ok: true; deleted?: number }>(`/expenses/${id}${all ? '?all=1' : ''}`),
   duplicateFixed: (to: string, from?: string) =>
     post<{ copied: number; skipped: number; found: number; from: string; to: string }>('/expenses/duplicate-fixed', { to, from }),
 
   tags: () => get<Tag[]>('/tags'),
-  addTag: (b: Omit<Tag, 'id'>) => post<Tag>('/tags', b),
-  updateTag: (id: number, b: Omit<Tag, 'id'>) => put<Tag>(`/tags/${id}`, b),
+  addTag: (b: Pick<Tag, 'name' | 'category' | 'default_amount'>) => post<Tag>('/tags', b),
+  updateTag: (id: number, b: Pick<Tag, 'name' | 'category' | 'default_amount'>) => put<Tag>(`/tags/${id}`, b),
   deleteTag: (id: number) => del(`/tags/${id}`),
 
   reserves: () => get<Reserve[]>('/reserves'),

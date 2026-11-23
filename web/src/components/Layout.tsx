@@ -4,7 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { LayoutDashboard, LogOut, PiggyBank, Plus, Receipt, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ThemeToggle } from '@/lib/theme';
-import { AppProvider, useApp } from '@/lib/app-context';
+import { AppProvider, useApp, type ExpensePreset } from '@/lib/app-context';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { resetSession } from '@/lib/session';
@@ -26,11 +26,17 @@ const NAV = [
 ];
 
 export default function Layout({ user }: { user: User }) {
-  const [expenseOpen, setExpenseOpen] = useState(false);
+  const [expenseState, setExpenseState] = useState<{ open: boolean; preset?: ExpensePreset; seq: number }>({ open: false, seq: 0 });
+  const openExpenseForm = (preset?: ExpensePreset) => setExpenseState((s) => ({ open: true, preset, seq: s.seq + 1 }));
   return (
-    <AppProvider user={user} openExpenseForm={() => setExpenseOpen(true)}>
+    <AppProvider user={user} openExpenseForm={openExpenseForm}>
       <Shell />
-      <ExpenseDialog open={expenseOpen} onClose={() => setExpenseOpen(false)} />
+      <ExpenseDialog
+        open={expenseState.open}
+        preset={expenseState.preset}
+        sessionKey={expenseState.seq}
+        onClose={() => setExpenseState((s) => ({ ...s, open: false }))}
+      />
     </AppProvider>
   );
 }
@@ -75,7 +81,7 @@ function Shell() {
           </nav>
 
           <div className="ml-auto flex items-center gap-1">
-            <Button onClick={openExpenseForm} className="hidden md:inline-flex">
+            <Button onClick={() => openExpenseForm()} className="hidden md:inline-flex">
               <Plus className="size-4" /> Novo gasto
             </Button>
             <ThemeToggle />
@@ -104,7 +110,7 @@ function Shell() {
 
       {/* Botão rápido de novo gasto (celular) */}
       {(pathname === '/' || pathname.startsWith('/gastos')) && (
-        <Button onClick={openExpenseForm} size="lg" className="fixed bottom-20 right-4 z-30 rounded-full shadow-lg md:hidden" aria-label="Novo gasto">
+        <Button onClick={() => openExpenseForm()} size="lg" className="fixed bottom-20 right-4 z-30 rounded-full shadow-lg md:hidden" aria-label="Novo gasto">
           <Plus className="size-5" /> Gasto
         </Button>
       )}

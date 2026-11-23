@@ -1,5 +1,6 @@
 export type Category = 'moradia' | 'contas_basicas' | 'alimentacao' | 'transporte' | 'saude' | 'dividas' | 'lazer';
 export type ExpenseType = 'fixed' | 'variable';
+export type ExpenseFrequency = 'daily' | 'weekly' | 'monthly';
 export type SplitMode = 'individual' | 'equal' | 'proportional';
 export type ExpenseStatus = 'paid' | 'pending';
 export type ReserveKind = 'emergency' | 'annual' | 'goal' | 'other';
@@ -27,10 +28,14 @@ export interface Expense {
   amount: number;
   category: Category;
   type: ExpenseType;
+  frequency: ExpenseFrequency;
   split_mode: SplitMode;
   status: ExpenseStatus;
   due_date: string;
   tag: string | null;
+  installment_group: string | null;
+  installment_num: number | null;
+  installment_total: number | null;
   created_at: string;
   splits: { member_id: number; assigned_amount: number }[];
 }
@@ -40,11 +45,14 @@ export interface ExpenseInput {
   amount: number;
   category: Category;
   type: ExpenseType;
+  frequency: ExpenseFrequency;
   split_mode: SplitMode;
   status: ExpenseStatus;
   due_date: string;
   member_ids: number[];
   tag?: string | null;
+  installments?: number;
+  installment_amount_mode?: 'total' | 'installment';
 }
 
 export interface Tag {
@@ -52,6 +60,7 @@ export interface Tag {
   name: string;
   category: Category;
   default_amount: number;
+  created_at: string;
 }
 
 export interface Reserve {
@@ -106,7 +115,8 @@ export interface Summary {
     owes_pending: number;
     free: number;
   }[];
-  tags: { name: string; total: number; count: number }[];
+  by_frequency: Record<ExpenseFrequency, { total: number; count: number }>;
+  tags: { name: string; total: number; count: number; last_at: string | null }[];
   categories: { category: Category; total: number; share_of_expenses: number; share_of_income: number }[];
   diagnosis: { critical: Insight[]; attention: Insight[]; good: Insight[] };
 }

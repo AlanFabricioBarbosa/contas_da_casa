@@ -41,10 +41,14 @@ CREATE TABLE IF NOT EXISTS expenses (
   amount REAL NOT NULL CHECK (amount > 0),
   category TEXT NOT NULL,
   type TEXT NOT NULL CHECK (type IN ('fixed','variable')),
+  frequency TEXT NOT NULL DEFAULT 'monthly' CHECK (frequency IN ('daily','weekly','monthly')),
   split_mode TEXT NOT NULL CHECK (split_mode IN ('individual','equal','proportional')),
   status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('paid','pending')),
   due_date TEXT NOT NULL,
   tag TEXT,
+  installment_group TEXT,
+  installment_num INTEGER,
+  installment_total INTEGER,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_expenses_user_month ON expenses(user_id, month_year);
@@ -117,10 +121,14 @@ CREATE TABLE IF NOT EXISTS expenses (
   amount DOUBLE PRECISION NOT NULL CHECK (amount > 0),
   category TEXT NOT NULL,
   type TEXT NOT NULL CHECK (type IN ('fixed','variable')),
+  frequency TEXT NOT NULL DEFAULT 'monthly' CHECK (frequency IN ('daily','weekly','monthly')),
   split_mode TEXT NOT NULL CHECK (split_mode IN ('individual','equal','proportional')),
   status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('paid','pending')),
   due_date TEXT NOT NULL,
   tag TEXT,
+  installment_group TEXT,
+  installment_num INTEGER,
+  installment_total INTEGER,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_expenses_user_month ON expenses(user_id, month_year);
@@ -166,6 +174,10 @@ CREATE TABLE IF NOT EXISTS expense_tags (
 );
 
 ALTER TABLE expenses ADD COLUMN IF NOT EXISTS tag TEXT;
+ALTER TABLE expenses ADD COLUMN IF NOT EXISTS frequency TEXT NOT NULL DEFAULT 'monthly';
+ALTER TABLE expenses ADD COLUMN IF NOT EXISTS installment_group TEXT;
+ALTER TABLE expenses ADD COLUMN IF NOT EXISTS installment_num INTEGER;
+ALTER TABLE expenses ADD COLUMN IF NOT EXISTS installment_total INTEGER;
 ALTER TABLE household_members ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ;
 `;
 
@@ -198,6 +210,12 @@ export async function openDb(file?: string): Promise<Db> {
   sqlite.exec(SCHEMA_SQLITE);
   const cols = sqlite.prepare('PRAGMA table_info(expenses)').all() as { name: string }[];
   if (!cols.some((c) => c.name === 'tag')) sqlite.exec('ALTER TABLE expenses ADD COLUMN tag TEXT');
+  if (!cols.some((c) => c.name === 'frequency')) {
+    sqlite.exec("ALTER TABLE expenses ADD COLUMN frequency TEXT NOT NULL DEFAULT 'monthly'");
+  }
+  if (!cols.some((c) => c.name === 'installment_group')) sqlite.exec('ALTER TABLE expenses ADD COLUMN installment_group TEXT');
+  if (!cols.some((c) => c.name === 'installment_num')) sqlite.exec('ALTER TABLE expenses ADD COLUMN installment_num INTEGER');
+  if (!cols.some((c) => c.name === 'installment_total')) sqlite.exec('ALTER TABLE expenses ADD COLUMN installment_total INTEGER');
   const mCols = sqlite.prepare('PRAGMA table_info(household_members)').all() as { name: string }[];
   if (!mCols.some((c) => c.name === 'updated_at')) sqlite.exec('ALTER TABLE household_members ADD COLUMN updated_at TEXT');
   return { kind: 'sqlite', sqlite };

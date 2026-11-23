@@ -85,9 +85,9 @@ export async function seedDemo(db: Db, userId: number, today: string) {
     for (const q of quick) {
       const id = await insert(
         tdb,
-        `INSERT INTO expenses (user_id, month_year, title, amount, category, type, split_mode, status, due_date, tag)
-         VALUES (?,?,?,?,?,?,?,?,?,?)`,
-        userId, month, q.tag, q.amount, q.category, 'variable', 'individual', 'paid', today, q.tag,
+        `INSERT INTO expenses (user_id, month_year, title, amount, category, type, frequency, split_mode, status, due_date, tag)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+        userId, month, q.tag, q.amount, q.category, 'variable', 'daily', 'individual', 'paid', today, q.tag,
       );
       await replaceSplits(tdb, id, 'individual', q.amount, [people[q.who]!]);
     }

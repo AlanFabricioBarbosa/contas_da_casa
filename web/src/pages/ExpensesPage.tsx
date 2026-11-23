@@ -3,15 +3,15 @@ import { CheckCircle2, Circle, Clock, Copy, Pencil, Plus, Tag as TagIcon, Trash2
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { ConfirmDialog } from '@/components/ui/dialog';
+import { ConfirmDialog, Dialog } from '@/components/ui/dialog';
 import { Select } from '@/components/ui/field';
 import { ExpenseDialog } from '@/components/ExpenseDialog';
 import { api } from '@/lib/api';
 import { useApp } from '@/lib/app-context';
-import { CATEGORY_INFO, CATEGORY_ORDER, SPLIT_LABEL } from '@/lib/categories';
+import { CATEGORY_INFO, CATEGORY_ORDER, FREQUENCY_INFO, FREQUENCY_ORDER, SPLIT_LABEL } from '@/lib/categories';
 import { brlFmt, formatShortDateTime, monthLabel, monthTitle, shiftMonth, shortDate, todayBR } from '@/lib/format';
 import { useAction, useExpenses, useMembers } from '@/lib/queries';
-import type { Category, Expense } from '@/lib/types';
+import type { Category, Expense, ExpenseFrequency } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { EmptyState, PageHeader, Skeleton } from './shared';
 
@@ -20,14 +20,19 @@ export default function ExpensesPage() {
   const q = useExpenses(month);
   const members = useMembers();
   const [status, setStatus] = useState<'all' | 'pending' | 'paid'>('all');
+  const [freq, setFreq] = useState<ExpenseFrequency | 'all'>('all');
   const [cat, setCat] = useState<Category | 'all'>('all');
   const [tagFilter, setTagFilter] = useState('all');
+  const [sort, setSort] = useState<'recent' | 'due'>('recent');
   const [editing, setEditing] = useState<Expense | null>(null);
   const [removing, setRemoving] = useState<Expense | null>(null);
   const today = todayBR();
 
   const toggle = useAction(({ id, status }: { id: number; status: 'paid' | 'pending' }) => api.setExpenseStatus(id, status));
-  const remove = useAction(api.deleteExpense, { success: 'Gasto removido.', onSuccess: () => setRemoving(null) });
+  const remove = useAction(({ id, all }: { id: number; all?: boolean }) => api.deleteExpense(id, all), {
+    success: (r) => (r.deleted && r.deleted > 1 ? `${r.deleted} parcelas removidas.` : 'Gasto removido.'),
+    onSuccess: () => setRemoving(null),
+  });
   const dup = useAction(() => api.duplicateFixed(month, shiftMonth(month, -1)), {
     success: (r) =>
       r.found === 0
@@ -39,7 +44,14 @@ export default function ExpensesPage() {
 
   const memberName = useMemo(() => new Map((members.data ?? []).map((m) => [m.id, m.name])), [members.data]);
   const all = q.data ?? [];
-  const list = all.filter((e) => (status === 'all' || e.status === status) && (cat === 'all' || e.category === cat) && (tagFilter === 'all' || e.tag === tagFilter));
+  const filtered = all.filter(
+    (e) =>
+      (status === 'all' || e.status === status) &&
+      (freq === 'all' || (e.frequency ?? 'monthly') === freq) &&
+      (cat === 'all' || e.category === cat) &&
+      (tagFilter === 'all' || e.tag === tagFilter),
+  );
+  const list = sort === 'recent' ? [...filtered].sort((a, b) => b.due_date.localeCompare(a.due_date) || b.id - a.id) : filtered;
   const tagNames = [...new Set(all.map((e) => e.tag).filter((t): t is string => !!t))];
   const total = all.reduce((a, e) => a + e.amount, 0);
   const paid = all.filter((e) => e.status === 'paid').reduce((a, e) => a + e.amount, 0);
@@ -54,7 +66,7 @@ export default function ExpensesPage() {
             <Button variant="outline" onClick={() => dup.mutate(undefined)} disabled={dup.isPending}>
               <Copy className="size-4" /> Duplicar gastos fixos do mês anterior
             </Button>
-            <Button onClick={openExpenseForm} className="hidden sm:inline-flex">
+            <Button onClick={() => openExpenseForm()} className="hidden sm:inline-flex">
               <Plus className="size-4" /> Novo gasto
             </Button>
           </>
@@ -65,7 +77,7 @@ export default function ExpensesPage() {
         <Skeleton />
       ) : all.length === 0 ? (
         <EmptyState title="Nenhum gasto neste mês" text="Lance seus gastos ou copie os fixos do mês anterior (aluguel, luz, internet…) para não digitar tudo de novo.">
-          <Button onClick={openExpenseForm}>
+          <Button onClick={() => openExpenseForm()}>
             <Plus className="size-4" /> Lançar primeiro gasto
           </Button>
           <Button variant="outline" onClick={() => dup.mutate(undefined)} disabled={dup.isPending}>
@@ -109,6 +121,14 @@ export default function ExpensesPage() {
                 </button>
               ))}
             </div>
+            <Select aria-label="Filtrar por frequência" className="h-9 w-auto" value={freq} onChange={(e) => setFreq(e.target.value as ExpenseFrequency | 'all')}>
+              <option value="all">Todas as frequências</option>
+              {FREQUENCY_ORDER.map((f) => (
+                <option key={f} value={f}>
+                  {FREQUENCY_INFO[f].label}
+                </option>
+              ))}
+            </Select>
             <Select aria-label="Filtrar por categoria" className="h-9 w-auto" value={cat} onChange={(e) => setCat(e.target.value as Category | 'all')}>
               <option value="all">Todas as categorias</option>
               {CATEGORY_ORDER.map((c) => (
@@ -127,6 +147,10 @@ export default function ExpensesPage() {
                 ))}
               </Select>
             )}
+            <Select aria-label="Ordenar gastos" className="h-9 w-auto" value={sort} onChange={(e) => setSort(e.target.value as 'recent' | 'due')}>
+              <option value="recent">Mais recentes primeiro</option>
+              <option value="due">Por vencimento</option>
+            </Select>
           </div>
 
           {list.length === 0 && <p className="py-8 text-center text-sm text-muted-foreground">Nenhum gasto com esse filtro.</p>}
@@ -155,7 +179,15 @@ export default function ExpensesPage() {
                         <Badge style={{ background: `${info.color}22`, color: info.color }}>
                           <info.icon className="size-3" aria-hidden /> {info.label}
                         </Badge>
-                        <Badge>{e.type === 'fixed' ? 'Fixo' : 'Variável'}</Badge>
+                        <Badge style={{ background: `${FREQUENCY_INFO[e.frequency ?? 'monthly'].color}1f`, color: FREQUENCY_INFO[e.frequency ?? 'monthly'].color }}>
+                          {FREQUENCY_INFO[e.frequency ?? 'monthly'].label}
+                        </Badge>
+                        {e.frequency !== 'daily' && !e.installment_group && <Badge>{e.type === 'fixed' ? 'Fixo' : 'Variável'}</Badge>}
+                        {e.installment_num && e.installment_total && (
+                          <Badge tone="primary">
+                            Parcela {e.installment_num}/{e.installment_total}
+                          </Badge>
+                        )}
                         {e.tag && (
                           <Badge tone="primary">
                             <TagIcon className="size-3" aria-hidden /> {e.tag}
@@ -193,15 +225,34 @@ export default function ExpensesPage() {
       )}
 
       <ExpenseDialog open={!!editing} expense={editing} onClose={() => setEditing(null)} />
-      <ConfirmDialog
-        open={!!removing}
-        onClose={() => setRemoving(null)}
-        onConfirm={() => removing && remove.mutate(removing.id)}
-        busy={remove.isPending}
-        title="Excluir este gasto?"
-        description={removing ? `"${removing.title}" (${brlFmt(removing.amount)}) será removido.` : ''}
-        confirmLabel="Excluir"
-      />
+      {removing?.installment_group ? (
+        <Dialog open={!!removing} onClose={() => setRemoving(null)} title="Excluir compra parcelada?">
+          <p className="text-sm text-muted-foreground">
+            "{removing.title}" é a parcela {removing.installment_num}/{removing.installment_total} ({brlFmt(removing.amount)}). Deseja apagar só esta ou todas as parcelas?
+          </p>
+          <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button variant="outline" onClick={() => setRemoving(null)}>
+              Cancelar
+            </Button>
+            <Button variant="outline" onClick={() => remove.mutate({ id: removing.id, all: false })} disabled={remove.isPending}>
+              Só esta parcela
+            </Button>
+            <Button variant="destructive" onClick={() => remove.mutate({ id: removing.id, all: true })} disabled={remove.isPending}>
+              {remove.isPending ? 'Aguarde…' : `Todas (${removing.installment_total})`}
+            </Button>
+          </div>
+        </Dialog>
+      ) : (
+        <ConfirmDialog
+          open={!!removing}
+          onClose={() => setRemoving(null)}
+          onConfirm={() => removing && remove.mutate({ id: removing.id })}
+          busy={remove.isPending}
+          title="Excluir este gasto?"
+          description={removing ? `"${removing.title}" (${brlFmt(removing.amount)}) será removido.` : ''}
+          confirmLabel="Excluir"
+        />
+      )}
     </div>
   );
 }

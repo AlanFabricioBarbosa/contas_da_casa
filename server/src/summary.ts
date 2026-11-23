@@ -1,5 +1,5 @@
 import { all, get, type Db } from './db.js';
-import { CATEGORIES, type Category } from './constants.js';
+import { CATEGORIES, type Category, type ExpenseFrequency } from './constants.js';
 import { addDays, prevMonth } from './dates.js';
 import { buildDiagnosis, type Diagnosis } from './diagnosis.js';
 import { fromCents, toCents } from './money.js';
@@ -32,7 +32,8 @@ export interface Summary {
     free: number;
   }[];
   categories: { category: Category; total: number; share_of_expenses: number; share_of_income: number }[];
-  tags: { name: string; total: number; count: number }[];
+  by_frequency: Record<ExpenseFrequency, { total: number; count: number }>;
+  tags: { name: string; total: number; count: number; last_at: string | null }[];
   diagnosis: Diagnosis;
 }
 
@@ -46,11 +47,12 @@ export async function buildSummary(db: Db, userId: number, month: string, today:
     amount: number;
     category: Category;
     type: 'fixed' | 'variable';
+    frequency: ExpenseFrequency;
     status: 'paid' | 'pending';
     due_date: string;
   }>(
     db,
-    `SELECT id, title, amount, category, type, status, due_date FROM expenses WHERE user_id = ? AND month_year = ?`,
+    `SELECT id, title, amount, category, type, frequency, status, due_date FROM expenses WHERE user_id = ? AND month_year = ?`,
     userId,
     month,
   );
@@ -65,12 +67,20 @@ export async function buildSummary(db: Db, userId: number, month: string, today:
   let paidC = 0;
   const byCatC = zeroByCat();
   const varC = zeroByCat();
+  const byFreq = {
+    daily: { cents: 0, count: 0 },
+    weekly: { cents: 0, count: 0 },
+    monthly: { cents: 0, count: 0 },
+  };
   for (const e of expenses) {
     const c = toCents(e.amount);
     totalC += c;
     if (e.status === 'paid') paidC += c;
     byCatC[e.category] = (byCatC[e.category] ?? 0) + c;
     if (e.type === 'variable') varC[e.category] = (varC[e.category] ?? 0) + c;
+    const f = byFreq[e.frequency ?? 'monthly'];
+    f.cents += c;
+    f.count += 1;
   }
   const prevVarC = zeroByCat();
   let prevDebtC = 0;
@@ -150,9 +160,9 @@ export async function buildSummary(db: Db, userId: number, month: string, today:
     today,
   );
 
-  const tagRows = await all<{ tag: string; total: number | string; n: number | string }>(
+  const tagRows = await all<{ tag: string; total: number | string; n: number | string; last_at: string | null }>(
     db,
-    `SELECT tag, SUM(amount) AS total, COUNT(*) AS n FROM expenses
+    `SELECT tag, SUM(amount) AS total, COUNT(*) AS n, MAX(created_at) AS last_at FROM expenses
       WHERE user_id = ? AND month_year = ? AND tag IS NOT NULL GROUP BY tag ORDER BY total DESC`,
     userId,
     month,
@@ -206,7 +216,12 @@ export async function buildSummary(db: Db, userId: number, month: string, today:
     savings_rate: incomeCents > 0 ? depC / incomeCents : 0,
     overdue_count: overdueItems.length,
     members: memberSummaries,
-    tags: tagRows.map((t) => ({ name: t.tag, total: fromCents(toCents(Number(t.total))), count: Number(t.n) })),
+    by_frequency: {
+      daily: { total: fromCents(byFreq.daily.cents), count: byFreq.daily.count },
+      weekly: { total: fromCents(byFreq.weekly.cents), count: byFreq.weekly.count },
+      monthly: { total: fromCents(byFreq.monthly.cents), count: byFreq.monthly.count },
+    },
+    tags: tagRows.map((t) => ({ name: t.tag, total: fromCents(toCents(Number(t.total))), count: Number(t.n), last_at: t.last_at })),
     categories: CATEGORIES.map((c) => ({
       category: c,
       total: fromCents(byCatC[c]),

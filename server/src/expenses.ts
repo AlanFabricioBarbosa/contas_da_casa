@@ -1,7 +1,7 @@
 import { all, get, insert, run, type Db } from './db.js';
 import { calcSplits, type SplitMember } from './money.js';
 import { dateInMonth, daysInMonth } from './dates.js';
-import type { ExpenseStatus, ExpenseType, SplitMode } from './constants.js';
+import type { ExpenseFrequency, ExpenseStatus, ExpenseType, SplitMode } from './constants.js';
 
 export interface ExpenseRow {
   id: number;
@@ -11,10 +11,14 @@ export interface ExpenseRow {
   amount: number;
   category: string;
   type: ExpenseType;
+  frequency: ExpenseFrequency;
   split_mode: SplitMode;
   status: ExpenseStatus;
   due_date: string;
   tag: string | null;
+  installment_group: string | null;
+  installment_num: number | null;
+  installment_total: number | null;
 }
 
 export interface MemberRow {
@@ -94,7 +98,7 @@ export async function duplicateFixed(db: Db, userId: number, from: string, to: s
   const members = new Map((await listMembers(db, userId)).map((m) => [m.id, m]));
   const source = await all<ExpenseRow>(
     db,
-    `SELECT * FROM expenses WHERE user_id = ? AND month_year = ? AND type = 'fixed' ORDER BY id`,
+    `SELECT * FROM expenses WHERE user_id = ? AND month_year = ? AND type = 'fixed' AND installment_group IS NULL ORDER BY id`,
     userId,
     from,
   );
@@ -127,14 +131,15 @@ export async function duplicateFixed(db: Db, userId: number, from: string, to: s
     const day = Number(e.due_date.slice(8, 10));
     const id = await insert(
       db,
-      `INSERT INTO expenses (user_id, month_year, title, amount, category, type, split_mode, status, due_date)
-       VALUES (?,?,?,?,?,?,?,?,?)`,
+      `INSERT INTO expenses (user_id, month_year, title, amount, category, type, frequency, split_mode, status, due_date)
+       VALUES (?,?,?,?,?,?,?,?,?,?)`,
       userId,
       to,
       e.title,
       e.amount,
       e.category,
       e.type,
+      e.frequency ?? 'monthly',
       e.split_mode,
       'pending',
       dateInMonth(to, Math.min(day, daysInMonth(to))),
