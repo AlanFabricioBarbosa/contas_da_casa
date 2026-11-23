@@ -5,8 +5,8 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 
-function git(cmd: string): string {
-  return execSync(cmd, { cwd: import.meta.dirname, stdio: ['ignore', 'pipe', 'ignore'] })
+function git(cmd: string, timeout = 3000): string {
+  return execSync(cmd, { cwd: import.meta.dirname, stdio: ['ignore', 'pipe', 'ignore'], timeout })
     .toString()
     .trim();
 }
@@ -20,6 +20,14 @@ function resolveAppVersion(): string {
 
   try {
     if (!sha) sha = git('git rev-parse --short HEAD');
+    // No Render o clone vem raso (--depth 1); busca o histórico completo para contar os commits reais.
+    if (git('git rev-parse --is-shallow-repository') === 'true') {
+      try {
+        git('git fetch --unshallow --quiet', 8000);
+      } catch {
+        /* se não tiver rede/permissão, mantém o fallback do package.json */
+      }
+    }
     if (git('git rev-parse --is-shallow-repository') === 'false') {
       const count = Number(git('git rev-list --count HEAD'));
       if (Number.isFinite(count) && count > patch) patch = count;
