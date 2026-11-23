@@ -22,7 +22,8 @@ async function call(method: string, url: string, body?: unknown, useCookie = tru
 before(async () => {
   const { openDb } = await import('./db.js');
   const { createApp } = await import('./app.js');
-  const server = createApp(openDb(':memory:')).listen(0);
+  const db = await openDb(':memory:');
+  const server = createApp(db).listen(0);
   base = `http://127.0.0.1:${(server.address() as AddressInfo).port}/api`;
   after_close = () => server.close();
 });

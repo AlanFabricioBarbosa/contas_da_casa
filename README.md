@@ -8,7 +8,7 @@ que explica, em linguagem simples, onde falta dinheiro, o que melhorar e o que e
 
 - **Front-end:** React 19 + TypeScript + Tailwind CSS 4, componentes no estilo shadcn/ui (em `web/src/components/ui`),
   mobile-first, modo claro/escuro, diálogos com `<dialog>` nativo.
-- **Back-end:** Node.js + Express 5 + **SQLite** (módulo nativo `node:sqlite`, sem compilar nada) + Zod.
+- **Back-end:** Node.js + Express 5 + **SQLite** (local, via `node:sqlite`) ou **PostgreSQL** (produção, quando `DATABASE_URL` está definida) + Zod.
 - **Autenticação:** e-mail e senha (scrypt) com sessão em cookie `httpOnly`. Cada usuário só enxerga os próprios dados.
 
 ## Como rodar

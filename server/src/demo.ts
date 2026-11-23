@@ -1,4 +1,4 @@
-import { run, tx, type Db } from './db.js';
+import { insert, run, tx, type Db } from './db.js';
 import { currentMonth, dateInMonth, prevMonth } from './dates.js';
 import { replaceSplits } from './expenses.js';
 import type { Category, ExpenseType, SplitMode } from './constants.js';
@@ -21,10 +21,10 @@ interface DemoExpense {
  * Cria um exemplo: casal com 1 salário mínimo cada, dividindo aluguel e contas.
  * O mês atual fecha "no azul", mas com alguns alertas, para mostrar o Consultor em ação.
  */
-export function seedDemo(db: Db, userId: number, today: string) {
-  tx(db, () => {
-    const eu = run(db, 'INSERT INTO household_members (user_id, name, monthly_income) VALUES (?,?,?)', userId, 'Eu', SALARIO_MINIMO).id;
-    const conj = run(db, 'INSERT INTO household_members (user_id, name, monthly_income) VALUES (?,?,?)', userId, 'Cônjuge', SALARIO_MINIMO).id;
+export async function seedDemo(db: Db, userId: number, today: string) {
+  await tx(db, async (tdb) => {
+    const eu = await insert(tdb, 'INSERT INTO household_members (user_id, name, monthly_income) VALUES (?,?,?)', userId, 'Eu', SALARIO_MINIMO);
+    const conj = await insert(tdb, 'INSERT INTO household_members (user_id, name, monthly_income) VALUES (?,?,?)', userId, 'Cônjuge', SALARIO_MINIMO);
     const people = [
       { id: eu, income: SALARIO_MINIMO },
       { id: conj, income: SALARIO_MINIMO },
@@ -49,44 +49,44 @@ export function seedDemo(db: Db, userId: number, today: string) {
       { title: 'Lazer e extras', amount: m === 'now' ? 150 : 60, category: 'lazer', type: 'variable', split: 'individual', who: 0, day: 14 },
     ];
 
-    const insert = (monthStr: string, list: DemoExpense[], isPrev: boolean) => {
+    const addList = async (monthStr: string, list: DemoExpense[], isPrev: boolean) => {
       for (const e of list) {
         const due = dateInMonth(monthStr, e.day);
         // No mês atual: o que já venceu está pago — menos a internet, "esquecida" para mostrar o alerta de atraso.
         const paid = isPrev || (e.day < todayDay && e.title !== 'Internet');
-        const { id } = run(
-          db,
+        const id = await insert(
+          tdb,
           `INSERT INTO expenses (user_id, month_year, title, amount, category, type, split_mode, status, due_date)
            VALUES (?,?,?,?,?,?,?,?,?)`,
           userId, monthStr, e.title, e.amount, e.category, e.type, e.split, paid ? 'paid' : 'pending', due,
         );
         const members = e.split === 'individual' ? [people[e.who ?? 0]!] : people;
-        replaceSplits(db, id, e.split, e.amount, members);
+        await replaceSplits(tdb, id, e.split, e.amount, members);
       }
     };
-    insert(prev, [...fixed('prev'), ...variable('prev')], true);
-    insert(month, [...fixed('now'), ...variable('now')], false);
+    await addList(prev, [...fixed('prev'), ...variable('prev')], true);
+    await addList(month, [...fixed('now'), ...variable('now')], false);
 
     // Reservas
     const reserve = (name: string, kind: string, target: number, current: number) =>
-      run(db, 'INSERT INTO reserves (user_id, name, kind, target_amount, current_amount) VALUES (?,?,?,?,?)', userId, name, kind, target, current).id;
-    const emergencia = reserve('Reserva de Emergência', 'emergency', SALARIO_MINIMO * 3, 450);
-    const anuais = reserve('Contas Anuais / IPTU', 'annual', 600, 150);
-    reserve('Meta Pessoal: celular novo', 'goal', 900, 120);
+      insert(tdb, 'INSERT INTO reserves (user_id, name, kind, target_amount, current_amount) VALUES (?,?,?,?,?)', userId, name, kind, target, current);
+    const emergencia = await reserve('Reserva de Emergência', 'emergency', SALARIO_MINIMO * 3, 450);
+    const anuais = await reserve('Contas Anuais / IPTU', 'annual', 600, 150);
+    await reserve('Meta Pessoal: celular novo', 'goal', 900, 120);
 
     // Aporte do mês passado (o mês atual ainda está sem depósito → o Consultor avisa)
-    run(db, 'INSERT INTO reserve_transactions (reserve_id, member_id, amount, type, date, note) VALUES (?,?,?,?,?,?)', emergencia, eu, 100, 'deposit', dateInMonth(prev, 6), 'Sobra do mês');
-    run(db, 'INSERT INTO reserve_transactions (reserve_id, member_id, amount, type, date, note) VALUES (?,?,?,?,?,?)', anuais, conj, 50, 'deposit', dateInMonth(prev, 7), null);
+    await run(tdb, 'INSERT INTO reserve_transactions (reserve_id, member_id, amount, type, date, note) VALUES (?,?,?,?,?,?)', emergencia, eu, 100, 'deposit', dateInMonth(prev, 6), 'Sobra do mês');
+    await run(tdb, 'INSERT INTO reserve_transactions (reserve_id, member_id, amount, type, date, note) VALUES (?,?,?,?,?,?)', anuais, conj, 50, 'deposit', dateInMonth(prev, 7), null);
 
-    run(db, 'UPDATE users SET has_demo_data = 1 WHERE id = ?', userId);
+    await run(tdb, 'UPDATE users SET has_demo_data = 1 WHERE id = ?', userId);
   });
 }
 
-export function clearUserData(db: Db, userId: number) {
-  tx(db, () => {
-    run(db, 'DELETE FROM expenses WHERE user_id = ?', userId);
-    run(db, 'DELETE FROM reserves WHERE user_id = ?', userId);
-    run(db, 'DELETE FROM household_members WHERE user_id = ?', userId);
-    run(db, 'UPDATE users SET has_demo_data = 0 WHERE id = ?', userId);
+export async function clearUserData(db: Db, userId: number) {
+  await tx(db, async (tdb) => {
+    await run(tdb, 'DELETE FROM expenses WHERE user_id = ?', userId);
+    await run(tdb, 'DELETE FROM reserves WHERE user_id = ?', userId);
+    await run(tdb, 'DELETE FROM household_members WHERE user_id = ?', userId);
+    await run(tdb, 'UPDATE users SET has_demo_data = 0 WHERE id = ?', userId);
   });
 }

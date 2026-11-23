@@ -35,11 +35,11 @@ export interface Summary {
   diagnosis: Diagnosis;
 }
 
-export function buildSummary(db: Db, userId: number, month: string, today: string): Summary {
-  const members = listMembers(db, userId);
+export async function buildSummary(db: Db, userId: number, month: string, today: string): Promise<Summary> {
+  const members = await listMembers(db, userId);
   const incomeCents = members.reduce((a, m) => a + toCents(m.monthly_income), 0);
 
-  const expenses = all<{
+  const expenses = await all<{
     id: number;
     title: string;
     amount: number;
@@ -53,7 +53,7 @@ export function buildSummary(db: Db, userId: number, month: string, today: strin
     userId,
     month,
   );
-  const prevExpenses = all<{ amount: number; category: Category; type: 'fixed' | 'variable' }>(
+  const prevExpenses = await all<{ amount: number; category: Category; type: 'fixed' | 'variable' }>(
     db,
     `SELECT amount, category, type FROM expenses WHERE user_id = ? AND month_year = ?`,
     userId,
@@ -80,7 +80,7 @@ export function buildSummary(db: Db, userId: number, month: string, today: strin
   }
 
   // Quanto cada pessoa paga
-  const splitRows = all<{ member_id: number; assigned_amount: number; status: 'paid' | 'pending' }>(
+  const splitRows = await all<{ member_id: number; assigned_amount: number; status: 'paid' | 'pending' }>(
     db,
     `SELECT s.member_id, s.assigned_amount, e.status
        FROM expense_splits s JOIN expenses e ON e.id = s.expense_id
@@ -112,13 +112,13 @@ export function buildSummary(db: Db, userId: number, month: string, today: strin
   });
 
   // Reservas
-  const reserves = all<{ id: number; name: string; kind: string; target_amount: number; current_amount: number }>(
+  const reserves = await all<{ id: number; name: string; kind: string; target_amount: number; current_amount: number }>(
     db,
     'SELECT id, name, kind, target_amount, current_amount FROM reserves WHERE user_id = ?',
     userId,
   );
   const reservesTotalC = reserves.reduce((a, r) => a + toCents(r.current_amount), 0);
-  const tx = all<{ type: 'deposit' | 'withdraw'; amount: number; kind: string }>(
+  const txRows = await all<{ type: 'deposit' | 'withdraw'; amount: number; kind: string }>(
     db,
     `SELECT t.type, t.amount, r.kind FROM reserve_transactions t JOIN reserves r ON r.id = t.reserve_id
       WHERE r.user_id = ? AND t.date >= ? AND t.date <= ?`,
@@ -129,7 +129,7 @@ export function buildSummary(db: Db, userId: number, month: string, today: strin
   let depC = 0;
   let wdC = 0;
   let emergDepC = 0;
-  for (const t of tx) {
+  for (const t of txRows) {
     const c = toCents(t.amount);
     if (t.type === 'deposit') {
       depC += c;
@@ -141,7 +141,7 @@ export function buildSummary(db: Db, userId: number, month: string, today: strin
   const overdueItems = expenses.filter((e) => e.status === 'pending' && e.due_date < today);
   const soonLimit = addDays(today, 5);
   const dueSoon = expenses.filter((e) => e.status === 'pending' && e.due_date >= today && e.due_date <= soonLimit);
-  const earlier = get<{ n: number }>(
+  const earlier = await get<{ n: number | string }>(
     db,
     `SELECT COUNT(*) AS n FROM expenses WHERE user_id = ? AND month_year < ? AND status = 'pending' AND due_date < ?`,
     userId,
@@ -171,7 +171,7 @@ export function buildSummary(db: Db, userId: number, month: string, today: strin
       amount: fromCents(overdueItems.reduce((a, e) => a + toCents(e.amount), 0)),
       titles: overdueItems.map((e) => e.title),
     },
-    earlierOverdueCount: earlier?.n ?? 0,
+    earlierOverdueCount: Number(earlier?.n ?? 0),
     dueSoon: {
       count: dueSoon.length,
       amount: fromCents(dueSoon.reduce((a, e) => a + toCents(e.amount), 0)),
