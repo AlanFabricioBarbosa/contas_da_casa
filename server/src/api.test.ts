@@ -61,8 +61,10 @@ test('cadastro, exemplo, resumo, limpeza e fluxo de gastos', async () => {
   assert.equal(created.status, 201);
   assert.deepEqual(created.body.splits.map((x: { assigned_amount: number }) => x.assigned_amount), [50, 50]);
   const first = members[0];
-  await call('PUT', `/members/${first.id}`, { name: first.name, monthly_income: 3 * 1621 });
+  const updMember = await call('PUT', `/members/${first.id}`, { name: first.name, monthly_income: 3 * 1621 });
+  assert.ok(updMember.body.updated_at);
   const after = (await call('GET', `/expenses?month=${month}`)).body.find((e: { id: number }) => e.id === created.body.id);
+  assert.ok(after.created_at);
   assert.deepEqual(after.splits.map((x: { assigned_amount: number }) => x.assigned_amount), [75, 25]);
 
   // validações
@@ -84,6 +86,8 @@ test('cadastro, exemplo, resumo, limpeza e fluxo de gastos', async () => {
   assert.equal(tooMuch.status, 400);
   const dep = await call('POST', `/reserves/${r0.id}/transactions`, { type: 'deposit', amount: 50, member_id: first.id });
   assert.equal(dep.body.current_amount, r0.current_amount + 50);
+  const rtx = (await call('GET', `/reserves/${r0.id}/transactions`)).body;
+  assert.ok(rtx[0]?.created_at);
   const s2 = (await call('GET', `/summary?month=${month}`)).body;
   assert.equal(s2.reserves_deposited_month, 50);
 

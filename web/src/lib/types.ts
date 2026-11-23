@@ -16,6 +16,8 @@ export interface Member {
   id: number;
   name: string;
   monthly_income: number;
+  created_at: string;
+  updated_at?: string | null;
 }
 
 export interface Expense {
@@ -29,6 +31,7 @@ export interface Expense {
   status: ExpenseStatus;
   due_date: string;
   tag: string | null;
+  created_at: string;
   splits: { member_id: number; assigned_amount: number }[];
 }
 
@@ -57,6 +60,7 @@ export interface Reserve {
   kind: ReserveKind;
   target_amount: number;
   current_amount: number;
+  created_at: string;
   contributions: { member_id: number; name: string; total: number }[];
 }
 
@@ -68,6 +72,7 @@ export interface ReserveTx {
   note: string | null;
   member_id: number | null;
   member_name: string | null;
+  created_at: string;
 }
 
 export interface Insight {

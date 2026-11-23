@@ -1,12 +1,12 @@
 import { useState } from 'react';
-import { Pencil, Plus, Trash2, Users } from 'lucide-react';
+import { Clock, Pencil, Plus, Trash2, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { ConfirmDialog, Dialog } from '@/components/ui/dialog';
 import { CurrencyInput, Field, Input } from '@/components/ui/field';
 import { Progress } from '@/components/ui/progress';
 import { api } from '@/lib/api';
-import { brlFmt, pctFmt } from '@/lib/format';
+import { brlFmt, formatDateTime, pctFmt } from '@/lib/format';
 import { useAction, useMembers } from '@/lib/queries';
 import type { Member } from '@/lib/types';
 import { EmptyState, PageHeader, Skeleton } from './shared';
@@ -74,6 +74,12 @@ export default function MembersPage() {
                       <span className="tabular font-semibold">{pctFmt(share)}</span>
                     </div>
                     <Progress className="mt-1.5" value={share * 100} label={`${m.name} representa ${pctFmt(share)} da renda`} />
+                    {(m.updated_at || m.created_at) && (
+                      <p className="mt-2.5 flex items-center gap-1 text-[11px] text-muted-foreground/80">
+                        <Clock className="size-3 shrink-0" aria-hidden />
+                        {m.updated_at ? `Atualizado em ${formatDateTime(m.updated_at)}` : `Cadastrado em ${formatDateTime(m.created_at)}`}
+                      </p>
+                    )}
                   </Card>
                 </li>
               );

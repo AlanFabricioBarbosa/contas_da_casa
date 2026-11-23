@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { CheckCircle2, Circle, Copy, Pencil, Plus, Tag as TagIcon, Trash2 } from 'lucide-react';
+import { CheckCircle2, Circle, Clock, Copy, Pencil, Plus, Tag as TagIcon, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -9,7 +9,7 @@ import { ExpenseDialog } from '@/components/ExpenseDialog';
 import { api } from '@/lib/api';
 import { useApp } from '@/lib/app-context';
 import { CATEGORY_INFO, CATEGORY_ORDER, SPLIT_LABEL } from '@/lib/categories';
-import { brlFmt, monthLabel, monthTitle, shiftMonth, shortDate, todayBR } from '@/lib/format';
+import { brlFmt, formatShortDateTime, monthLabel, monthTitle, shiftMonth, shortDate, todayBR } from '@/lib/format';
 import { useAction, useExpenses, useMembers } from '@/lib/queries';
 import type { Category, Expense } from '@/lib/types';
 import { cn } from '@/lib/utils';
@@ -170,6 +170,11 @@ export default function ExpensesPage() {
                         {SPLIT_LABEL[e.split_mode]}:{' '}
                         {e.splits.map((s) => `${memberName.get(s.member_id) ?? '—'} ${brlFmt(s.assigned_amount)}`).join(' · ')}
                       </p>
+                      {e.created_at && (
+                        <p className="mt-1 flex items-center gap-1 text-[11px] text-muted-foreground/80">
+                          <Clock className="size-3 shrink-0" aria-hidden /> Lançado em {formatShortDateTime(e.created_at)}
+                        </p>
+                      )}
                     </div>
                     <div className="flex shrink-0 flex-col sm:flex-row">
                       <Button variant="ghost" size="icon" aria-label={`Editar ${e.title}`} onClick={() => setEditing(e)}>

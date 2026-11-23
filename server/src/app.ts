@@ -232,7 +232,15 @@ export function createApp(db: Db) {
     const b = memberBody.parse(req.body);
     const id = Number(req.params.id);
     await tx(db, async (tdb) => {
-      const r = await run(tdb, 'UPDATE household_members SET name = ?, monthly_income = ? WHERE id = ? AND user_id = ?', b.name, b.monthly_income, id, req.userId!);
+      const r = await run(
+        tdb,
+        'UPDATE household_members SET name = ?, monthly_income = ?, updated_at = ? WHERE id = ? AND user_id = ?',
+        b.name,
+        b.monthly_income,
+        new Date().toISOString(),
+        id,
+        req.userId!,
+      );
       if (!r.changes) throw new HttpError(404, 'Pessoa não encontrada.');
       await rebuildSplits(tdb, req.userId!);
     });
@@ -432,7 +440,7 @@ export function createApp(db: Db) {
     res.json(
       await all(
         db,
-        `SELECT t.id, t.amount, t.type, t.date, t.note, t.member_id, m.name AS member_name
+        `SELECT t.id, t.amount, t.type, t.date, t.note, t.member_id, t.created_at, m.name AS member_name
            FROM reserve_transactions t LEFT JOIN household_members m ON m.id = t.member_id
           WHERE t.reserve_id = ? ORDER BY t.date DESC, t.id DESC LIMIT 100`,
         Number(req.params.id),

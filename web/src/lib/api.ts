@@ -54,8 +54,8 @@ export const api = {
   summary: (month: string) => get<Summary>(`/summary?month=${month}`),
 
   members: () => get<Member[]>('/members'),
-  addMember: (b: Omit<Member, 'id'>) => post<Member>('/members', b),
-  updateMember: (id: number, b: Omit<Member, 'id'>) => put<Member>(`/members/${id}`, b),
+  addMember: (b: Pick<Member, 'name' | 'monthly_income'>) => post<Member>('/members', b),
+  updateMember: (id: number, b: Pick<Member, 'name' | 'monthly_income'>) => put<Member>(`/members/${id}`, b),
   deleteMember: (id: number) => del(`/members/${id}`),
 
   expenses: (month: string) => get<Expense[]>(`/expenses?month=${month}`),

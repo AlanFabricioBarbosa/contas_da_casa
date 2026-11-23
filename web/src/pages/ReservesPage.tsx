@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowDownCircle, ArrowUpCircle, History, Pencil, PiggyBank, Plus, Trash2 } from 'lucide-react';
+import { ArrowDownCircle, ArrowUpCircle, Clock, History, Pencil, PiggyBank, Plus, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { ConfirmDialog, Dialog } from '@/components/ui/dialog';
@@ -9,7 +9,7 @@ import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { api } from '@/lib/api';
 import { RESERVE_KIND_LABEL } from '@/lib/categories';
-import { brlFmt, fullDate, pctFmt, todayBR } from '@/lib/format';
+import { brlFmt, dateKeyBR, formatDateTime, formatShortDateTime, formatTime, fullDate, pctFmt, todayBR } from '@/lib/format';
 import { useAction, useMembers, useReserves } from '@/lib/queries';
 import type { Reserve, ReserveKind } from '@/lib/types';
 import { EmptyState, PageHeader, Skeleton } from './shared';
@@ -75,6 +75,11 @@ export default function ReservesPage() {
                       <div>
                         <p className="font-semibold">{r.name}</p>
                         <p className="text-xs text-muted-foreground">{RESERVE_KIND_LABEL[r.kind]}</p>
+                        {r.created_at && (
+                          <p className="mt-0.5 flex items-center gap-1 text-[11px] text-muted-foreground/80">
+                            <Clock className="size-3 shrink-0" aria-hidden /> Criada em {formatDateTime(r.created_at)}
+                          </p>
+                        )}
                       </div>
                       <div className="flex">
                         <Button variant="ghost" size="icon" aria-label={`Editar ${r.name}`} onClick={() => setForm({ reserve: r })}>
@@ -283,6 +288,10 @@ function HistoryView({ reserve }: { reserve: Reserve }) {
             </p>
             <p className="truncate text-xs text-muted-foreground">
               {fullDate(t.date)}
+              {t.created_at &&
+                (dateKeyBR(t.created_at) === t.date
+                  ? ` às ${formatTime(t.created_at)}`
+                  : ` · lançado em ${formatShortDateTime(t.created_at)}`)}
               {t.note ? ` · ${t.note}` : ''}
             </p>
           </div>

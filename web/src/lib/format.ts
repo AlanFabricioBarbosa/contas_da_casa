@@ -47,3 +47,40 @@ export function shortDate(date: string) {
 export function fullDate(date: string) {
   return `${date.slice(8, 10)}/${date.slice(5, 7)}/${date.slice(0, 4)}`;
 }
+
+const tz = 'America/Sao_Paulo';
+const brDate = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' });
+const brFull = new Intl.DateTimeFormat('pt-BR', { timeZone: tz, day: '2-digit', month: '2-digit', year: 'numeric' });
+const brShort = new Intl.DateTimeFormat('pt-BR', { timeZone: tz, day: '2-digit', month: '2-digit' });
+const brTime = new Intl.DateTimeFormat('pt-BR', { timeZone: tz, hour: '2-digit', minute: '2-digit' });
+
+function parseUtc(raw?: string | null): Date | null {
+  if (!raw) return null;
+  // SQLite datetime('now') vem como "YYYY-MM-DD HH:MM:SS" em UTC sem o "Z".
+  const norm = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(raw) ? raw.replace(' ', 'T') + 'Z' : raw;
+  const d = new Date(norm);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+/** "2026-11-23T10:38:00Z" → "23/11/2026 às 07:38" */
+export function formatDateTime(raw?: string | null): string {
+  const d = parseUtc(raw);
+  return d ? `${brFull.format(d)} às ${brTime.format(d)}` : '';
+}
+
+/** "2026-11-23T10:38:00Z" → "23/11 às 07:38" */
+export function formatShortDateTime(raw?: string | null): string {
+  const d = parseUtc(raw);
+  return d ? `${brShort.format(d)} às ${brTime.format(d)}` : '';
+}
+
+/** "2026-11-23T10:38:00Z" → "07:38" */
+export function formatTime(raw?: string | null): string {
+  const d = parseUtc(raw);
+  return d ? brTime.format(d) : '';
+}
+
+export function dateKeyBR(raw?: string | null): string {
+  const d = parseUtc(raw);
+  return d ? brDate.format(d) : '';
+}

@@ -29,7 +29,8 @@ CREATE TABLE IF NOT EXISTS household_members (
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
   monthly_income REAL NOT NULL DEFAULT 0 CHECK (monthly_income >= 0),
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT
 );
 
 CREATE TABLE IF NOT EXISTS expenses (
@@ -104,7 +105,8 @@ CREATE TABLE IF NOT EXISTS household_members (
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
   monthly_income DOUBLE PRECISION NOT NULL DEFAULT 0 CHECK (monthly_income >= 0),
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ
 );
 
 CREATE TABLE IF NOT EXISTS expenses (
@@ -164,6 +166,7 @@ CREATE TABLE IF NOT EXISTS expense_tags (
 );
 
 ALTER TABLE expenses ADD COLUMN IF NOT EXISTS tag TEXT;
+ALTER TABLE household_members ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ;
 `;
 
 function toPgSql(sql: string): string {
@@ -195,6 +198,8 @@ export async function openDb(file?: string): Promise<Db> {
   sqlite.exec(SCHEMA_SQLITE);
   const cols = sqlite.prepare('PRAGMA table_info(expenses)').all() as { name: string }[];
   if (!cols.some((c) => c.name === 'tag')) sqlite.exec('ALTER TABLE expenses ADD COLUMN tag TEXT');
+  const mCols = sqlite.prepare('PRAGMA table_info(household_members)').all() as { name: string }[];
+  if (!mCols.some((c) => c.name === 'updated_at')) sqlite.exec('ALTER TABLE household_members ADD COLUMN updated_at TEXT');
   return { kind: 'sqlite', sqlite };
 }
 
