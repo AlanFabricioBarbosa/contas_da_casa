@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Field, Input } from '@/components/ui/field';
 import { ThemeToggle } from '@/lib/theme';
+import { Footer } from '@/components/Footer';
 import { api } from '@/lib/api';
 import { errMsg } from '@/lib/queries';
 import { cn } from '@/lib/utils';
@@ -103,6 +104,7 @@ export default function AuthPage() {
             {mode === 'register' && <p className="text-center text-xs text-muted-foreground">Sua conta nova já vem com um exemplo para você conhecer. Dá para limpar com um clique.</p>}
           </form>
         </Card>
+        <Footer className="mt-6 border-t-0 pt-0" />
       </div>
     </div>
   );

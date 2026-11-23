@@ -13,6 +13,7 @@ import { MonthPicker } from './MonthPicker';
 import { DemoBanner } from './DemoBanner';
 import { ClaimDialog } from './ClaimDialog';
 import { ExpenseDialog } from './ExpenseDialog';
+import { Footer } from './Footer';
 import DashboardPage from '@/pages/DashboardPage';
 import ExpensesPage from '@/pages/ExpensesPage';
 import MembersPage from '@/pages/MembersPage';
@@ -54,7 +55,7 @@ function Shell() {
   };
 
   return (
-    <div className="min-h-dvh pb-24 md:pb-8">
+    <div className="flex min-h-dvh flex-col pb-24 md:pb-8">
       <header className="sticky top-0 z-30 border-b bg-card/90 backdrop-blur supports-[backdrop-filter]:bg-card/75">
         <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-2.5">
           <div className="flex items-center gap-2 font-bold">
@@ -97,15 +98,18 @@ function Shell() {
         )}
       </header>
 
-      <main className="mx-auto max-w-6xl px-4 py-4 pb-28 sm:py-6 md:pb-6">
-        <DemoBanner user={user} onClaim={() => setClaim(true)} />
-        <Routes>
-          <Route path="/" element={<DashboardPage />} />
-          <Route path="/gastos" element={<ExpensesPage />} />
-          <Route path="/reservas" element={<ReservesPage />} />
-          <Route path="/pessoas" element={<MembersPage />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+      <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col px-4 py-4 pb-28 sm:py-6 md:pb-6">
+        <div className="flex-1">
+          <DemoBanner user={user} onClaim={() => setClaim(true)} />
+          <Routes>
+            <Route path="/" element={<DashboardPage />} />
+            <Route path="/gastos" element={<ExpensesPage />} />
+            <Route path="/reservas" element={<ReservesPage />} />
+            <Route path="/pessoas" element={<MembersPage />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </div>
+        <Footer />
       </main>
 
       {/* Botão rápido de novo gasto (celular) */}
