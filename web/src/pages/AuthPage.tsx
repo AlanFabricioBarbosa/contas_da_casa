@@ -101,7 +101,7 @@ export default function AuthPage() {
             <Button type="submit" disabled={busy}>
               {busy ? 'Aguarde…' : mode === 'login' ? 'Entrar' : 'Criar conta'}
             </Button>
-            {mode === 'register' && <p className="text-center text-xs text-muted-foreground">Sua conta nova já vem com um exemplo para você conhecer. Dá para limpar com um clique.</p>}
+            {mode === 'register' && <p className="text-center text-xs text-muted-foreground">Sua conta nova começa zerada e salva no banco, pronta para os seus dados reais.</p>}
           </form>
         </Card>
         <Footer className="mt-6 border-t-0 pt-0" />

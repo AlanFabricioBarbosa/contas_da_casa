@@ -8,7 +8,7 @@ import { all, get, insert, run, tx, type Db } from './db.js';
 import { endSession, hashPassword, rateLimit, requireAuth, startSession, verifyPassword } from './auth.js';
 import { CATEGORIES, EXPENSE_FREQUENCIES, EXPENSE_STATUS, EXPENSE_TYPES, RESERVE_KINDS, SPLIT_MODES } from './constants.js';
 import { addDays, currentMonth, dateInMonth, isMonth, isValidDate, prevMonth, shiftMonth, todayBR } from './dates.js';
-import { clearUserData, seedDemo } from './demo.js';
+import { clearUserData } from './demo.js';
 import {
   duplicateFixed,
   listMembers,
@@ -145,7 +145,6 @@ export function createApp(db: Db) {
       throw new HttpError(409, 'Já existe uma conta com este e-mail.');
     }
     const id = await insert(db, 'INSERT INTO users (email, name, password_hash) VALUES (?,?,?)', body.email, body.name, hashPassword(body.password));
-    await seedDemo(db, id, today());
     startSession(res, id);
     res.status(201).json(publicUser((await userById(id))!));
   });
@@ -158,21 +157,6 @@ export function createApp(db: Db) {
     }
     startSession(res, u.id);
     res.json(publicUser(u));
-  });
-
-  // Conta de visitante já preenchida com o exemplo, para testar na hora.
-  api.post('/auth/demo', authLimiter, async (_req, res) => {
-    const email = `visitante-${crypto.randomBytes(6).toString('hex')}@demo.local`;
-    const id = await insert(
-      db,
-      'INSERT INTO users (email, name, password_hash, is_guest) VALUES (?,?,?,1)',
-      email,
-      'Visitante',
-      hashPassword(crypto.randomBytes(16).toString('hex')),
-    );
-    await seedDemo(db, id, today());
-    startSession(res, id);
-    res.status(201).json(publicUser((await userById(id))!));
   });
 
   api.post('/auth/logout', (_req, res) => {
@@ -189,37 +173,12 @@ export function createApp(db: Db) {
     res.json(publicUser(u));
   });
 
-  // Transforma o visitante em conta de verdade, mantendo os dados.
-  api.post('/auth/claim', requireAuth, async (req, res) => {
-    const u = await userById(req.userId!);
-    if (!u?.is_guest) throw new HttpError(400, 'Esta conta já está registrada.');
-    const body = registerBody.parse(req.body);
-    if (await get(db, 'SELECT 1 AS x FROM users WHERE email = ?', body.email)) {
-      throw new HttpError(409, 'Já existe uma conta com este e-mail.');
-    }
-    await run(db, 'UPDATE users SET email = ?, name = ?, password_hash = ?, is_guest = 0 WHERE id = ?', body.email, body.name, hashPassword(body.password), u.id);
-    res.json(publicUser((await userById(u.id))!));
-  });
-
   /* Tudo abaixo exige login */
   api.use(requireAuth);
 
-  /* ---------------- Modo demonstração ---------------- */
+  /* ---------------- Limpeza de exemplo legado ---------------- */
   api.post('/demo/clear', async (req, res) => {
     await clearUserData(db, req.userId!);
-    res.json({ ok: true });
-  });
-  api.post('/demo/load', async (req, res) => {
-    const uid = req.userId!;
-    const row = await get<{ n: number | string }>(
-      db,
-      'SELECT (SELECT COUNT(*) FROM household_members WHERE user_id = ?) + (SELECT COUNT(*) FROM expenses WHERE user_id = ?) + (SELECT COUNT(*) FROM reserves WHERE user_id = ?) AS n',
-      uid,
-      uid,
-      uid,
-    );
-    if (Number(row?.n ?? 0) > 0) throw new HttpError(400, 'Só é possível carregar o exemplo quando não há dados.');
-    await seedDemo(db, uid, today());
     res.json({ ok: true });
   });
 

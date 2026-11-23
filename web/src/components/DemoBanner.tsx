@@ -19,11 +19,11 @@ export function DemoBanner({ user, onClaim }: { user: User; onClaim: () => void 
           <div className="text-sm">
             {user.has_demo_data ? (
               <>
-                <p className="font-semibold">Você está vendo dados de exemplo</p>
-                <p className="opacity-90">Um casal com 1 salário mínimo cada. Mexa à vontade — e quando quiser, comece com os seus números.</p>
+                <p className="font-semibold">Você está no modo demonstração (dados de exemplo)</p>
+                <p className="opacity-90">Estes dados não ficam salvos no banco: ao recarregar a página, o exemplo volta ao estado inicial. Para salvar de verdade, crie sua conta.</p>
               </>
             ) : (
-              <p className="font-semibold">Você está usando como visitante. Crie uma conta para não perder seus dados.</p>
+              <p className="font-semibold">Você está testando em memória. Recarregar a página restaura o exemplo inicial — crie sua conta para salvar no banco.</p>
             )}
           </div>
         </div>
@@ -46,7 +46,7 @@ export function DemoBanner({ user, onClaim }: { user: User; onClaim: () => void 
         onConfirm={() => clear.mutate(undefined)}
         busy={clear.isPending}
         title="Começar do zero?"
-        description="Vamos apagar todas as pessoas, gastos e reservas de exemplo. Depois você cadastra os seus. Isso não pode ser desfeito."
+        description="Isso limpa os dados de exemplo apenas nesta visualização para você testar do zero. Se recarregar a página, o exemplo inicial volta."
         confirmLabel="Sim, limpar tudo"
       />
     </div>

@@ -34,10 +34,10 @@ Variáveis opcionais: `PORT`, `DB_PATH` (arquivo SQLite; padrão `server/data/fi
 
 ## Modo demonstração
 
-- Tela de entrada: **"Testar agora com dados de exemplo"** cria uma conta de visitante já preenchida
-  (casal com 1 salário mínimo cada, aluguel e contas divididos). Dá para transformá-la em conta real depois.
-- Contas novas também começam com o exemplo. O botão **"Limpar dados de exemplo e começar do zero"**
-  fica visível no topo enquanto houver dados de exemplo.
+- Tela de entrada: **"Testar agora com dados de exemplo"** abre o app apenas em memória no navegador
+  (casal com 1 salário mínimo cada, aluguel e contas divididos), **sem gravar nada no banco de dados**.
+  Ao recarregar a página (`F5`), os dados de exemplo voltam ao estado inicial.
+- Contas novas criadas por e-mail/senha começam zeradas no banco, prontas para os seus números reais.
 
 ## Regras do Consultor (`server/src/diagnosis.ts`)
 

@@ -19,6 +19,30 @@ async function call(method: string, url: string, body?: unknown, useCookie = tru
   return { status: res.status, body: text ? JSON.parse(text) : null };
 }
 
+async function seedHousehold(month: string, prev: string) {
+  const m1 = (await call('POST', '/members', { name: 'Eu', monthly_income: 1621 })).body;
+  const m2 = (await call('POST', '/members', { name: 'Cônjuge', monthly_income: 1621 })).body;
+  const both = [m1.id, m2.id];
+  await call('POST', '/expenses', {
+    title: 'Aluguel', amount: 1100, category: 'moradia', type: 'fixed', frequency: 'monthly',
+    split_mode: 'proportional', status: 'paid', due_date: `${month}-05`, member_ids: both,
+  });
+  await call('POST', '/expenses', {
+    title: 'Internet', amount: 100, category: 'contas_basicas', type: 'fixed', frequency: 'monthly',
+    split_mode: 'equal', status: 'pending', due_date: `${month}-05`, member_ids: both,
+  });
+  await call('POST', '/expenses', {
+    title: 'Lazer', amount: 150, category: 'lazer', type: 'variable', frequency: 'monthly',
+    split_mode: 'individual', status: 'paid', due_date: `${month}-14`, member_ids: [m1.id],
+  });
+  await call('POST', '/expenses', {
+    title: 'Lazer', amount: 60, category: 'lazer', type: 'variable', frequency: 'monthly',
+    split_mode: 'individual', status: 'paid', due_date: `${prev}-14`, member_ids: [m1.id],
+  });
+  await call('POST', '/reserves', { name: 'Emergência', kind: 'emergency', target_amount: 4863, current_amount: 450 });
+  return [m1, m2];
+}
+
 before(async () => {
   const { openDb } = await import('./db.js');
   const { createApp } = await import('./app.js');
@@ -34,26 +58,28 @@ test('exige login', async () => {
   assert.equal(r.status, 401);
 });
 
-test('cadastro, exemplo, resumo, limpeza e fluxo de gastos', async () => {
+test('cadastro começa limpo (sem dados de exemplo no banco) e fluxo completo de gastos e reservas', async () => {
   const reg = await call('POST', '/auth/register', { name: 'Maria', email: 'maria@teste.com', password: 'senha1234' });
   assert.equal(reg.status, 201);
-  assert.equal(reg.body.has_demo_data, true);
+  assert.equal(reg.body.has_demo_data, false);
+  assert.equal((await call('GET', '/members')).body.length, 0);
+  assert.equal((await call('GET', '/reserves')).body.length, 0);
 
   const dup = await call('POST', '/auth/register', { name: 'Maria', email: 'MARIA@teste.com', password: 'senha1234' });
   assert.equal(dup.status, 409);
 
-  const { todayBR } = await import('./dates.js');
+  const { todayBR, prevMonth } = await import('./dates.js');
   const month = todayBR().slice(0, 7);
+  const members = await seedHousehold(month, prevMonth(month));
 
   const s = (await call('GET', `/summary?month=${month}`)).body;
   assert.equal(s.income_total, 3242);
   assert.equal(s.members.length, 2);
   const sumOwes = s.members.reduce((a: number, m: { owes: number }) => a + m.owes, 0);
   assert.equal(Math.round(sumOwes * 100), Math.round(s.expenses_total * 100));
-  assert.ok(s.diagnosis.critical.length > 0 && s.diagnosis.attention.length > 0 && s.diagnosis.good.length > 0);
+  assert.ok(s.diagnosis.attention.length > 0 && s.diagnosis.good.length > 0);
 
   // novo gasto proporcional, depois mudança de renda recalcula
-  const members = (await call('GET', '/members')).body;
   const created = await call('POST', '/expenses', {
     title: 'Teste', amount: 100, category: 'lazer', type: 'variable', split_mode: 'proportional',
     due_date: `${month}-28`, member_ids: members.map((m: { id: number }) => m.id),
@@ -95,28 +121,18 @@ test('cadastro, exemplo, resumo, limpeza e fluxo de gastos', async () => {
   await call('DELETE', `/members/${members[1].id}`);
   const left = (await call('GET', `/expenses?month=${month}`)).body;
   assert.ok(left.every((e: { splits: unknown[] }) => e.splits.length >= 1));
-
-  // limpar exemplo
-  await call('POST', '/demo/clear');
-  assert.equal((await call('GET', '/members')).body.length, 0);
-  assert.equal((await call('GET', '/auth/me')).body.has_demo_data, false);
-  assert.equal((await call('GET', `/summary?month=${month}`)).body.expenses_total, 0);
 });
 
 test('tags: atalhos, gasto rápido e total por tag no resumo', async () => {
-  await call('POST', '/demo/load');
   const { todayBR } = await import('./dates.js');
   const today = todayBR();
   const month = today.slice(0, 7);
 
-  const tags = (await call('GET', '/tags')).body;
-  assert.ok(tags.length >= 3);
-  const dup = await call('POST', '/tags', { name: tags[0].name, category: 'transporte', default_amount: 10 });
-  assert.equal(dup.status, 409);
-
   const created = await call('POST', '/tags', { name: 'Estacionamento', category: 'transporte', default_amount: 8 });
   assert.equal(created.status, 201);
   assert.ok(created.body.created_at);
+  const dup = await call('POST', '/tags', { name: 'Estacionamento', category: 'transporte', default_amount: 10 });
+  assert.equal(dup.status, 409);
   const upd = await call('PUT', `/tags/${created.body.id}`, { name: 'Estacionamento', category: 'transporte', default_amount: 9.5 });
   assert.equal(upd.body.default_amount, 9.5);
 
@@ -152,12 +168,9 @@ test('tags: atalhos, gasto rápido e total por tag no resumo', async () => {
 
   assert.equal((await call('DELETE', `/tags/${created.body.id}`)).status, 200);
   assert.equal((await call('DELETE', `/tags/${created.body.id}`)).status, 404);
-  await call('POST', '/demo/clear');
-  assert.equal((await call('GET', '/tags')).body.length, 0);
 });
 
 test('compras parceladas: divide sem perder centavos, gera meses futuros e exclui o grupo', async () => {
-  await call('POST', '/demo/load');
   const members = (await call('GET', '/members')).body;
   const { shiftMonth } = await import('./dates.js');
   const m1 = '2026-01';
@@ -203,8 +216,6 @@ test('compras parceladas: divide sem perder centavos, gera meses futuros e exclu
   assert.equal(delAll.body.deleted, 3);
   assert.equal((await call('GET', `/expenses?month=${m1}`)).body.some((e: { title: string }) => e.title === 'Ventilador'), false);
   assert.equal((await call('GET', `/expenses?month=${m3}`)).body.some((e: { title: string }) => e.title === 'Ventilador'), false);
-
-  await call('POST', '/demo/clear');
 });
 
 test('login, logout e isolamento entre usuários', async () => {
@@ -214,11 +225,10 @@ test('login, logout e isolamento entre usuários', async () => {
   const ok = await call('POST', '/auth/login', { email: 'maria@teste.com', password: 'senha1234' });
   assert.equal(ok.status, 200);
 
-  const guest = await call('POST', '/auth/demo');
-  assert.equal(guest.status, 201);
-  assert.ok((await call('GET', '/members')).body.length === 2);
-  // visitante não enxerga dados da Maria (que estão zerados) e vice-versa
-  const claimed = await call('POST', '/auth/claim', { name: 'Zé', email: 'ze@teste.com', password: 'outrasenha1' });
-  assert.equal(claimed.body.is_guest, false);
+  // Segundo usuário não enxerga dados da Maria
+  cookie = '';
+  const reg2 = await call('POST', '/auth/register', { name: 'Zé', email: 'ze@teste.com', password: 'outrasenha1' });
+  assert.equal(reg2.status, 201);
+  assert.equal((await call('GET', '/members')).body.length, 0);
   after_close();
 });

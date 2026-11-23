@@ -1,4 +1,5 @@
-import type { Tag, Expense, ExpenseInput, ExpenseStatus, Member, Reserve, ReserveKind, ReserveTx, Summary, User } from './types';
+import { demoStore, enterDemoMode, exitDemoMode, isDemoMode } from './demo-store';
+import type { Expense, ExpenseInput, ExpenseStatus, Member, Reserve, ReserveKind, ReserveTx, Summary, Tag, User } from './types';
 
 export class ApiError extends Error {
   constructor(
@@ -41,42 +42,59 @@ const patch = <T>(url: string, body: unknown) => request<T>('PATCH', url, body);
 const del = <T>(url: string) => request<T>('DELETE', url);
 
 export const api = {
-  me: () => get<User>('/auth/me'),
-  login: (b: { email: string; password: string }) => post<User>('/auth/login', b),
-  register: (b: { name: string; email: string; password: string }) => post<User>('/auth/register', b),
-  guest: () => post<User>('/auth/demo'),
-  claim: (b: { name: string; email: string; password: string }) => post<User>('/auth/claim', b),
-  logout: () => post<{ ok: true }>('/auth/logout'),
+  me: () => (isDemoMode() ? demoStore.me() : get<User>('/auth/me')),
+  login: async (b: { email: string; password: string }) => {
+    const u = await post<User>('/auth/login', b);
+    exitDemoMode();
+    return u;
+  },
+  register: async (b: { name: string; email: string; password: string }) => {
+    const u = await post<User>('/auth/register', b);
+    exitDemoMode();
+    return u;
+  },
+  guest: async () => enterDemoMode(),
+  logout: () => (isDemoMode() ? demoStore.logout() : post<{ ok: true }>('/auth/logout')),
 
-  clearDemo: () => post<{ ok: true }>('/demo/clear'),
-  loadDemo: () => post<{ ok: true }>('/demo/load'),
+  clearDemo: () => (isDemoMode() ? demoStore.clearDemo() : post<{ ok: true }>('/demo/clear')),
 
-  summary: (month: string) => get<Summary>(`/summary?month=${month}`),
+  summary: (month: string) => (isDemoMode() ? demoStore.summary(month) : get<Summary>(`/summary?month=${month}`)),
 
-  members: () => get<Member[]>('/members'),
-  addMember: (b: Pick<Member, 'name' | 'monthly_income'>) => post<Member>('/members', b),
-  updateMember: (id: number, b: Pick<Member, 'name' | 'monthly_income'>) => put<Member>(`/members/${id}`, b),
-  deleteMember: (id: number) => del(`/members/${id}`),
+  members: () => (isDemoMode() ? demoStore.members() : get<Member[]>('/members')),
+  addMember: (b: Pick<Member, 'name' | 'monthly_income'>) => (isDemoMode() ? demoStore.addMember(b) : post<Member>('/members', b)),
+  updateMember: (id: number, b: Pick<Member, 'name' | 'monthly_income'>) =>
+    isDemoMode() ? demoStore.updateMember(id, b) : put<Member>(`/members/${id}`, b),
+  deleteMember: (id: number) => (isDemoMode() ? demoStore.deleteMember(id) : del(`/members/${id}`)),
 
-  expenses: (month: string) => get<Expense[]>(`/expenses?month=${month}`),
-  addExpense: (b: ExpenseInput) => post<Expense & { created_count?: number }>('/expenses', b),
-  updateExpense: (id: number, b: ExpenseInput) => put<Expense>(`/expenses/${id}`, b),
-  setExpenseStatus: (id: number, status: ExpenseStatus) => patch<Expense>(`/expenses/${id}/status`, { status }),
-  deleteExpense: (id: number, all = false) => del<{ ok: true; deleted?: number }>(`/expenses/${id}${all ? '?all=1' : ''}`),
+  expenses: (month: string) => (isDemoMode() ? demoStore.expenses(month) : get<Expense[]>(`/expenses?month=${month}`)),
+  addExpense: (b: ExpenseInput) =>
+    isDemoMode() ? demoStore.addExpense(b) : post<Expense & { created_count?: number }>('/expenses', b),
+  updateExpense: (id: number, b: ExpenseInput) =>
+    isDemoMode() ? demoStore.updateExpense(id, b) : put<Expense>(`/expenses/${id}`, b),
+  setExpenseStatus: (id: number, status: ExpenseStatus) =>
+    isDemoMode() ? demoStore.setExpenseStatus(id, status) : patch<Expense>(`/expenses/${id}/status`, { status }),
+  deleteExpense: (id: number, all = false) =>
+    isDemoMode() ? demoStore.deleteExpense(id, all) : del<{ ok: true; deleted?: number }>(`/expenses/${id}${all ? '?all=1' : ''}`),
   duplicateFixed: (to: string, from?: string) =>
-    post<{ copied: number; skipped: number; found: number; from: string; to: string }>('/expenses/duplicate-fixed', { to, from }),
+    isDemoMode()
+      ? demoStore.duplicateFixed(to, from)
+      : post<{ copied: number; skipped: number; found: number; from: string; to: string }>('/expenses/duplicate-fixed', { to, from }),
 
-  tags: () => get<Tag[]>('/tags'),
-  addTag: (b: Pick<Tag, 'name' | 'category' | 'default_amount'>) => post<Tag>('/tags', b),
-  updateTag: (id: number, b: Pick<Tag, 'name' | 'category' | 'default_amount'>) => put<Tag>(`/tags/${id}`, b),
-  deleteTag: (id: number) => del(`/tags/${id}`),
+  tags: () => (isDemoMode() ? demoStore.tags() : get<Tag[]>('/tags')),
+  addTag: (b: Pick<Tag, 'name' | 'category' | 'default_amount'>) => (isDemoMode() ? demoStore.addTag(b) : post<Tag>('/tags', b)),
+  updateTag: (id: number, b: Pick<Tag, 'name' | 'category' | 'default_amount'>) =>
+    isDemoMode() ? demoStore.updateTag(id, b) : put<Tag>(`/tags/${id}`, b),
+  deleteTag: (id: number) => (isDemoMode() ? demoStore.deleteTag(id) : del(`/tags/${id}`)),
 
-  reserves: () => get<Reserve[]>('/reserves'),
-  addReserve: (b: { name: string; kind: ReserveKind; target_amount: number; current_amount: number }) => post<Reserve>('/reserves', b),
-  updateReserve: (id: number, b: { name: string; kind: ReserveKind; target_amount: number }) => put<Reserve>(`/reserves/${id}`, b),
-  deleteReserve: (id: number) => del(`/reserves/${id}`),
-  reserveTx: (id: number) => get<ReserveTx[]>(`/reserves/${id}/transactions`),
+  reserves: () => (isDemoMode() ? demoStore.reserves() : get<Reserve[]>('/reserves')),
+  addReserve: (b: { name: string; kind: ReserveKind; target_amount: number; current_amount: number }) =>
+    isDemoMode() ? demoStore.addReserve(b) : post<Reserve>('/reserves', b),
+  updateReserve: (id: number, b: { name: string; kind: ReserveKind; target_amount: number }) =>
+    isDemoMode() ? demoStore.updateReserve(id, b) : put<Reserve>(`/reserves/${id}`, b),
+  deleteReserve: (id: number) => (isDemoMode() ? demoStore.deleteReserve(id) : del(`/reserves/${id}`)),
+  reserveTx: (id: number) => (isDemoMode() ? demoStore.reserveTx(id) : get<ReserveTx[]>(`/reserves/${id}/transactions`)),
   addReserveTx: (id: number, b: { type: 'deposit' | 'withdraw'; amount: number; member_id: number | null; date: string; note?: string }) =>
-    post<Reserve>(`/reserves/${id}/transactions`, b),
-  deleteReserveTx: (id: number, txId: number) => del(`/reserves/${id}/transactions/${txId}`),
+    isDemoMode() ? demoStore.addReserveTx(id, b) : post<Reserve>(`/reserves/${id}/transactions`, b),
+  deleteReserveTx: (id: number, txId: number) =>
+    isDemoMode() ? demoStore.deleteReserveTx(id, txId) : del(`/reserves/${id}/transactions/${txId}`),
 };
